@@ -29,6 +29,8 @@ table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nu
 th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); cursor: pointer; user-select: none; }
 th:first-child, td:first-child, td.l, th.l { text-align: left; }
+td.wrap { white-space: normal; min-width: 200px; text-align: left; }
+td.wrap .chip { margin-bottom: 3px; }
 tr.click { cursor: pointer; } tr.click:hover td { background: var(--panel2); }
 .tablewrap { overflow-x: auto; }
 .mono { font-family: var(--mono); font-size: 12.5px; }

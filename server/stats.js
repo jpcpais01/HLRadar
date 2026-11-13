@@ -122,12 +122,13 @@ export function deflatedSharpe(r, nTrials, topK = 1) {
 }
 
 // Max drawdown of an equity curve, as a fraction of the running peak.
+// Max drawdown as a fraction of the running peak (capped at 100%).
 export function maxDrawdown(equity) {
   let peak = -Infinity;
   let mdd = 0;
   for (const v of equity) {
     if (v > peak) peak = v;
-    if (peak > 0) mdd = Math.max(mdd, (peak - v) / peak);
+    if (peak > 0) mdd = Math.max(mdd, Math.min(1, (peak - v) / peak));
   }
   return mdd;
 }

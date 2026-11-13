@@ -46,7 +46,7 @@ Two units of "a trade" are used:
 * **Round trip**: position leaves zero and returns to zero. Used for stop-loss analysis.
 * **Closing event**: a burst of reducing fills in one coin (gaps under 1 hour). Many good traders never go fully flat, they scale in and out, so round trips undercount their decisions. Closing events are the unit for win rate, payoff, concentration and per-trade Sharpe.
 
-Daily returns are **realized PnL net of fees ÷ account value at that time**, using Hyperliquid's own account-value history. That makes them independent of deposits and withdrawals.
+Daily returns are **realized PnL net of fees ÷ account value at that time**, using Hyperliquid's own account-value history. That makes them independent of deposits and withdrawals. The equity index and drawdown are built additively (1 + cumulative daily return, i.e. return on a fixed unit of capital), so one terrible day against a thin account can't zero out an otherwise profitable record.
 
 #### Layer 1: data and style
 
@@ -105,7 +105,7 @@ N and k come from settings (`nTrialsOverride`, `finalists.count`), and DSR is re
 
 ## Independent traders
 
-One person running four wallets should not look like a four-trader consensus. Wallets are merged into one **entity** when they transfer money to each other, or share a funding wallet with at most 3 other scanned wallets. A funder that feeds 5 or more scanned wallets is treated as an exchange or bridge hub and does not link them.
+One person running four wallets should not look like a four-trader consensus. Wallets are merged into one **entity** when they transfer money to each other, or share a funding wallet. Before linking through a shared funder, we download that funder's own transfers: if it paid more than 15 different wallets in the last 30 days it is an exchange, bridge or payment hub (one such address paid 800+ wallets in two weeks) and does not link anyone.
 
 ## Consensus and signals
 

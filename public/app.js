@@ -35,6 +35,7 @@ const sideChip = (s) => (s > 0 ? '<span class="chip long">LONG</span>' : '<span 
 const coinName = (c) => esc(c.includes(':') ? `${c.split(':')[1]}` : c) + (c.includes(':') ? ` <span class="muted">${esc(c.split(':')[0])}</span>` : '');
 
 let META = null;
+let STATUS = null;
 let CONFIG = null;
 const CLASS_COLORS = { index: '#4aa3ff', equity: '#6c8cff', commodity: '#d8a24a', fx: '#8bd0c9', major: '#f7931a', largecap: '#9b7bff', alt: '#7d8ea3', smallcap: '#5b6676', meme: '#ff5fa2' };
 
@@ -108,6 +109,7 @@ const legend = () => Object.entries(META.classes).map(([k, c]) => `<span class="
 // ---------- status bar ----------
 async function refreshStatus() {
   const s = await api('/api/status');
+  STATUS = s;
   const p = s.progress;
   const scanning = s.running ? `<b>${esc(p.phase)}</b> ${p.done}/${p.total}` : `${esc(p.phase === 'idle' ? 'Idle' : p.phase)}`;
   $('#status').innerHTML = `
@@ -181,7 +183,6 @@ async function renderSignals() {
 const walletCols = (withFailed) => [
   { key: 'rank', label: '#', fmt: (r, i) => i + 1, sort: (r) => -r.score },
   { key: 'address', label: 'Wallet', l: true, fmt: (r) => `<span class="mono">${short(r.address)}</span> ${r.name ? `<span class="muted">${esc(r.name)}</span>` : ''} ${r.source === 'vault' ? '<span class="chip">vault</span>' : ''}${r.entity !== r.address ? '<span class="chip" title="linked by funding to another scanned wallet">linked</span>' : ''}` },
-  ...(withFailed ? [{ key: 'failed', label: 'Failed gates', l: true, fmt: (r) => r.failed.length ? r.failed.map((f) => `<span class="chip short">${esc(META.gates[f]?.label || f)}</span>`).join('') : '<span class="chip long">finalist-grade</span>', sort: (r) => -r.failed.length }] : []),
   { key: 'score', label: 'Skill', fmt: (r) => `<b>${f2(r.score, 0)}</b>` },
   { key: 'accountValue', label: 'Equity', fmt: (r) => usd(r.accountValue) },
   { key: 'totalPnl', label: 'Realized PnL', fmt: (r) => usd(r.totalPnl), cls: (r) => sgn(r.totalPnl) },
@@ -197,6 +198,7 @@ const walletCols = (withFailed) => [
   { key: 'medianLeverage', label: 'Lev', fmt: (r) => `${f2(r.medianLeverage, 1)}x` },
   { key: 'slCoverage', label: 'Stops', fmt: (r) => pct(r.slCoverage, 0) },
   { key: 'assetMix', label: 'Asset mix', fmt: (r) => mixBar(r.assetMix), sort: (r) => r.tradfiShare },
+  ...(withFailed ? [{ key: 'failed', label: 'Failed gates', l: true, cls: () => 'wrap', fmt: (r) => r.failed.length ? r.failed.map((f) => `<span class="chip short" title="${esc(META.gates[f]?.label || f)}">${esc(META.gates[f]?.short || f)}</span>`).join('') : '<span class="chip long">passes all</span>', sort: (r) => -r.failed.length }] : []),
 ];
 
 async function renderFinalists(rank) {
@@ -281,10 +283,10 @@ async function renderFilters() {
         <li><b>Universe (cheap, every leaderboard wallet).</b> Account ≥ ${usd(CONFIG.universe.minAccountValue)}, all-time volume ≥ ${usd(CONFIG.universe.minAllTimeVolume)}, profitable all-time and this month, monthly turnover ≤ ${CONFIG.universe.maxMonthlyTurnover}x equity (above that is market making). The best ${CONFIG.universe.deepScanCount} plus up to 30 profitable vaults get a deep scan.</li>
         <li><b>Data & style.</b> Enough trades, long enough history, still active, intraday to few-day holding period, serious volume.</li>
         <li><b>Your filters.</b> Asset class (memes penalised, TradFi rewarded), stop-loss usage with sane distances, and optionally whale-sized funding wallets.</li>
-        <li><b>Skill vs luck.</b> Deflated Sharpe Ratio (corrects for the ${compact(CONFIG.nTrialsOverride || 0) === '0' ? 'number of wallets screened' : CONFIG.nTrialsOverride + ' trials'}), month-by-month consistency plus a first-half/second-half out-of-sample check, drawdown, profit not from one trade, healthy win/payoff, sane leverage, and no hidden open losses.</li>
+        <li><b>Skill vs luck.</b> Deflated Sharpe Ratio (Sharpe judged against what the luckiest zero-skill wallets out of the ~${compact(STATUS?.nTrials || 0)} we screened would show), month-by-month consistency plus a first-half/second-half out-of-sample check, drawdown, profit not from one trade, healthy win/payoff, sane leverage, and no hidden open losses.</li>
       </ol>
       <p><b>Skill score</b> (ranks survivors, 0-100): ${Object.entries(META.weights).map(([k, w]) => `${k} ${Math.round(w * 100)}%`).join(' · ')}.</p>
-      <p><b>Independent traders.</b> Wallets that send money to each other, or share a funding wallet with up to 3 other scanned wallets, are treated as one trader in the consensus so one person with 4 accounts can't fake a consensus.</p>
+      <p><b>Independent traders.</b> Wallets that send money to each other, or share a funding wallet that is not an exchange-style hub (we check how many wallets it pays), are treated as one trader in the consensus, so one person with 4 accounts can't fake a consensus.</p>
     </div>
     <h2>Tune the gates</h2>
     <p class="sub">Changes re-rank instantly from cached data. Universe and scan settings apply on the next scan.</p>
@@ -406,6 +408,7 @@ function showTab(t) {
   history.replaceState(null, '', `#${t}`);
 }
 document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => { showTab(b.dataset.tab); if (b.dataset.tab === 'filters') renderFilters(); });
+window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (t && t !== activeTab && $(`#tab-${t}`)) showTab(t); });
 
 async function loadAll() {
   const rank = await api('/api/ranking');

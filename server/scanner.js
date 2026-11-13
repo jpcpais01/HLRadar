@@ -24,6 +24,7 @@ export class Scanner {
     fs.mkdirSync(this.walletDir, { recursive: true });
     fs.mkdirSync(this.rawDir, { recursive: true });
     this.screened = readJson(path.join(dataDir, 'screened.json')) || {};
+    this.funders = readJson(path.join(dataDir, 'funders.json')) || {};
     this.config = mergeConfig(DEFAULT_CONFIG, readJson(path.join(dataDir, 'config.json')));
     this.hl = new HLClient({ cacheDir: path.join(dataDir, 'cache'), weightPerMinute: this.config.scan.weightPerMinute });
     this.universe = readJson(path.join(dataDir, 'universe.json'));
@@ -226,8 +227,9 @@ export class Scanner {
           }
         } catch (e) { this.progress.errors.push(`${c.address}: ${e.message}`); }
         this.progress.done++;
-        if (this.progress.done % 10 === 0) this.computeEntities();
+        if (this.progress.done % 20 === 0) { await this.checkFunders(); this.computeEntities(); }
       }
+      await this.checkFunders();
       fs.writeFileSync(path.join(this.dataDir, 'screened.json'), JSON.stringify(this.screened));
       this.computeEntities();
       this.progress.phase = this.stopRequested ? 'stopped' : 'done';
@@ -246,8 +248,25 @@ export class Scanner {
     setMeta(meta.universe);
   }
 
-  // Wallets that fund each other, or share a funder with only a few other scanned wallets, are treated as one entity.
-  // A funder that feeds many scanned wallets is more likely an exchange or bridge hub, so it doesn't link them.
+  // For every wallet that funds 2+ scanned wallets, look at its own transfers: a wallet that pays out to many
+  // different addresses is an exchange / bridge / payment hub and must not link traders together.
+  async checkFunders() {
+    const counts = new Map();
+    for (const a of this.analyses.values()) {
+      for (const cp of a.metrics.flows.counterparties || []) if (cp.inUsd > 0) counts.set(cp.address, (counts.get(cp.address) || 0) + 1);
+    }
+    for (const [addr, n] of counts) {
+      if (n < 2 || this.funders[addr]) continue;
+      try {
+        const led = await this.hl.ledger(addr, Date.now() - 30 * DAY);
+        const dests = new Set((led || []).filter((u) => (u.delta?.user || '').toLowerCase() === addr).map((u) => (u.delta.destination || '').toLowerCase()));
+        this.funders[addr] = { recipients30d: dests.size, hub: dests.size > 15, checkedAt: Date.now() };
+      } catch { /* try again next time */ }
+    }
+    fs.writeFileSync(path.join(this.dataDir, 'funders.json'), JSON.stringify(this.funders));
+  }
+
+  // Wallets that fund each other, or share a funder that is not a hub, are treated as one entity.
   computeEntities() {
     const addrs = [...this.analyses.keys()];
     const parent = Object.fromEntries(addrs.map((a) => [a, a]));
@@ -263,8 +282,10 @@ export class Scanner {
         }
       }
     }
-    for (const set of funders.values()) {
-      if (set.size >= 2 && set.size <= 4) { const [first, ...rest] = [...set]; rest.forEach((r) => union(first, r)); }
+    for (const [funder, set] of funders) {
+      if (set.size < 2 || this.funders[funder]?.hub !== false || set.size > 6) continue; // unknown or hub: don't link
+      const [first, ...rest] = [...set];
+      rest.forEach((r) => union(first, r));
     }
     const groups = {};
     for (const a of addrs) (groups[find(a)] ||= []).push(a);

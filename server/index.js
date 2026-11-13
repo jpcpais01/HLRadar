@@ -89,6 +89,7 @@ async function handle(req, res) {
     if (m && req.method === 'POST') {
       await scanner.loadMeta();
       const a = await scanner.analyzeWallet(m[1], { source: 'manual' });
+      await scanner.checkFunders();
       scanner.computeEntities();
       return send(res, 200, { ok: true, address: a.metrics.address });
     }

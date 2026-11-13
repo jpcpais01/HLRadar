@@ -46,21 +46,21 @@ export const DEFAULT_CONFIG = {
 };
 
 export const GATE_INFO = {
-  sample: { layer: 'Data & style', label: 'Enough trades', why: 'Fewer than ~40 round trips is too small a sample to tell skill from noise.' },
-  longevity: { layer: 'Data & style', label: 'Track record length', why: 'A few lucky weeks are common; surviving months of regime changes is not.' },
-  active: { layer: 'Data & style', label: 'Still active', why: 'We want to copy wallets that are trading now.' },
-  style: { layer: 'Data & style', label: 'Intraday / few-day style', why: 'Median hold between 15 min and 7 days. Rejects market makers/HFT (not copyable) and long-term holders.' },
-  volume: { layer: 'Data & style', label: 'Serious volume', why: 'Large, sustained volume means real capital and real conviction, and filters out dust accounts.' },
-  assetClass: { layer: 'Your filters', label: 'Not a memecoin gambler', why: 'Memecoin PnL is dominated by lottery-like jumps. Equities, indices, commodities and majors reward analysis more.' },
-  riskManagement: { layer: 'Your filters', label: 'Uses stops, sanely', why: 'Share of trades protected by a stop-loss placed while the trade was open, with a stop distance that is neither noise-tight nor beyond liquidation. Plus: no single trade lost more than 15% of equity.' },
-  funding: { layer: 'Your filters', label: 'Funded by a large wallet', why: 'At least one on-HL funding counterparty holds over $1M. Off by default: most deposits arrive through the bridge, which hides the source.' },
-  luck: { layer: 'Skill vs luck', label: 'Beats the luck benchmark', why: 'Deflated Sharpe Ratio: the probability that the Sharpe ratio is real after accounting for how many wallets we screened (the best of N lucky coin-flippers also looks great), fat tails and track length. Uses daily and per-trade returns; either can pass.' },
-  consistency: { layer: 'Skill vs luck', label: 'Consistent over time', why: 'Most months (or weeks) profitable, and profitable in both halves of the history, an out-of-sample check.' },
-  drawdown: { layer: 'Skill vs luck', label: 'Controlled drawdown', why: 'Gamblers who later got lucky usually show deep drawdowns first.' },
-  concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 5% of trades.' },
-  payoff: { layer: 'Skill vs luck', label: 'Healthy win/payoff mix', why: 'Profit factor above 1.15, and not the "picking up pennies" pattern (very high win rate with rare huge losses).' },
-  leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', why: 'Huge leverage turns noise into huge PnL both ways; a liquidation is a risk-management failure.' },
-  openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss.' },
+  sample: { layer: 'Data & style', label: 'Enough trades', short: 'sample', why: 'Fewer than ~40 closing trades (or 20 active days) is too small a sample to tell skill from noise.' },
+  longevity: { layer: 'Data & style', label: 'Track record length', short: 'history', why: 'A few lucky weeks are common; surviving months of regime changes is not.' },
+  active: { layer: 'Data & style', label: 'Still active', short: 'inactive', why: 'We want to copy wallets that are trading now.' },
+  style: { layer: 'Data & style', label: 'Intraday / few-day style', short: 'style', why: 'Median hold between 15 min and 7 days. Rejects market makers/HFT (not copyable) and long-term holders.' },
+  volume: { layer: 'Data & style', label: 'Serious volume', short: 'volume', why: 'Large, sustained volume means real capital and real conviction, and filters out dust accounts.' },
+  assetClass: { layer: 'Your filters', label: 'Not a memecoin gambler', short: 'memes', why: 'Memecoin PnL is dominated by lottery-like jumps. Equities, indices, commodities and majors reward analysis more.' },
+  riskManagement: { layer: 'Your filters', label: 'Uses stops, sanely', short: 'stops', why: 'Share of trades protected by a stop-loss placed while the trade was open, with a stop distance that is neither noise-tight nor beyond liquidation. Plus: no single trade lost more than 15% of equity.' },
+  funding: { layer: 'Your filters', label: 'Funded by a large wallet', short: 'funding', why: 'At least one on-HL funding counterparty holds over $1M. Off by default: most deposits arrive through the bridge, which hides the source.' },
+  luck: { layer: 'Skill vs luck', label: 'Beats the luck benchmark', short: 'luck', why: 'Deflated Sharpe Ratio: the probability that the Sharpe ratio beats what the luckiest zero-skill wallets would show, given how many wallets we screened, the shortlist size, fat tails and track length. Uses daily and per-trade returns; either can pass.' },
+  consistency: { layer: 'Skill vs luck', label: 'Consistent over time', short: 'consistency', why: 'Most months (or weeks) profitable, and profitable in both halves of the history, an out-of-sample check.' },
+  drawdown: { layer: 'Skill vs luck', label: 'Controlled drawdown', short: 'drawdown', why: 'Gamblers who later got lucky usually show deep drawdowns first.' },
+  concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', short: 'one trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 5% of trades.' },
+  payoff: { layer: 'Skill vs luck', label: 'Healthy win/payoff mix', short: 'payoff', why: 'Profit factor above 1.15, and not the "picking up pennies" pattern (very high win rate with rare huge losses).' },
+  leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', short: 'leverage', why: 'Huge leverage turns noise into huge PnL both ways; a liquidation is a risk-management failure.' },
+  openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss.' },
 };
 
 const pct = (x) => (x === null || x === undefined ? 'n/a' : `${(x * 100).toFixed(1)}%`);

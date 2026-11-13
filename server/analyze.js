@@ -311,23 +311,25 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
     days.push(d);
     daily.push((dailyPnl.get(d) || 0) / equityAt(d));
   }
+  // Additive equity index (1 + cumulative daily return): return on a fixed unit of capital. Compounding would let
+  // one near-total-loss day (vs. a thin account) wipe the index even when dollar PnL is strongly positive.
   const curve = [];
   let idx = 1;
-  for (const r of daily) { idx *= 1 + Math.max(-0.99, r); curve.push(idx); }
+  for (const r of daily) { idx += r; curve.push(idx); }
 
   // Calendar months / weeks.
   const months = new Map();
   days.forEach((d, i) => {
     const k = new Date(d).toISOString().slice(0, 7);
-    if (!months.has(k)) months.set(k, { month: k, ret: 1, days: 0 });
+    if (!months.has(k)) months.set(k, { month: k, ret: 0, days: 0 });
     const m = months.get(k);
-    m.ret *= 1 + Math.max(-0.99, daily[i]);
+    m.ret += daily[i];
     m.days++;
   });
-  const monthly = [...months.values()].map((m) => ({ month: m.month, ret: m.ret - 1, days: m.days }));
+  const monthly = [...months.values()].map((m) => ({ month: m.month, ret: m.ret, days: m.days }));
   const fullishMonths = monthly.filter((m) => m.days >= 10);
   const weekly = [];
-  for (let i = 0; i < daily.length; i += 7) weekly.push(daily.slice(i, i + 7).reduce((p, r) => p * (1 + r), 1) - 1);
+  for (let i = 0; i < daily.length; i += 7) weekly.push(S.sum(daily.slice(i, i + 7)));
 
   const half = Math.floor(daily.length / 2);
   const wins = events.filter((t) => t.pnl > 0);
