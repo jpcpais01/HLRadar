@@ -125,6 +125,17 @@ async function refreshStatus() {
   return s;
 }
 
+// Sum a list of trade events per wallet (for compact alert cards).
+function byWallet(events) {
+  const m = new Map();
+  for (const e of events) {
+    const w = m.get(e.address) || { address: e.address, notional: 0, qty: 0 };
+    w.notional += e.notional; w.qty += e.qty;
+    m.set(e.address, w);
+  }
+  return [...m.values()].sort((x, y) => y.notional - x.notional);
+}
+
 // ---------- Signals ----------
 async function renderSignals() {
   const el = $('#tab-signals');
@@ -147,8 +158,9 @@ async function renderSignals() {
   $('#alerts').innerHTML = c.alerts.length ? c.alerts.map((a) => `
     <div class="card alert"><div style="display:flex;justify-content:space-between"><b>${coinName(a.coin)} ${sideChip(a.side)}</b><span class="muted">${ago(a.last)}</span></div>
     <div>${a.entities} independent finalists opened ${usd(a.notional)} total</div>
-    <div class="muted" style="font-size:12px">${a.events.map((e) => `${short(e.address)} ${usd(e.notional)} @ ${f2(e.avgPx, 4)}`).join(' · ')}</div></div>`).join('')
+    <div class="muted" style="font-size:12px">${byWallet(a.events).map((w) => `<a href="#" data-w="${w.address}" class="mono">${short(w.address)}</a> ${usd(w.notional)} @ ${f2(w.notional / w.qty, 4)}`).join(' · ')}</div></div>`).join('')
     : '<div class="empty">No clustered entries in the current window.</div>';
+  $('#alerts').querySelectorAll('[data-w]').forEach((el) => el.onclick = (e) => { e.preventDefault(); openWallet(el.dataset.w); });
   table($('#cons'), c.rows, [
     { key: 'coin', label: 'Asset', l: true, fmt: (r) => `<b>${coinName(r.coin)}</b>`, sort: (r) => r.coin },
     { key: 'cls', label: 'Class', l: true, fmt: (r) => `<span class="chip">${esc(META.classes[r.cls]?.label || r.cls)}</span>` },
