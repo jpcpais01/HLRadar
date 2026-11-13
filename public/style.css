@@ -65,3 +65,4 @@ svg text { fill: var(--muted); font-size: 11px; }
 .cfg .gh { display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: var(--text); }
 .alert { border-left: 3px solid var(--warn); }
 @media (max-width: 700px) { main { padding: 12px 16px 40px; } .funnel .row { grid-template-columns: 140px 1fr 50px; } .cols-2 { grid-template-columns: 1fr; } }
+.card > .empty { border: 0; padding: 18px; }
