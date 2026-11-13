@@ -144,7 +144,7 @@ export class HLClient {
     const times = latest.map((f) => f.time);
     const span = Math.max(...times) - Math.min(...times);
     const all = [];
-    let cursor = Math.max(startTime, Date.now() - span * (maxPages - 0.5));
+    let cursor = Math.floor(Math.max(startTime, Date.now() - span * (maxPages - 0.5)));
     for (let page = 0; page < maxPages; page++) {
       const batch = await this.info({ type: 'userFillsByTime', user, startTime: cursor, aggregateByTime: true }, { ttlMs });
       if (!Array.isArray(batch) || batch.length === 0) break;
