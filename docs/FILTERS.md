@@ -35,7 +35,13 @@ The best 250 by a broad pre-score (return on capital, recent form, size) plus up
 
 ### Stage 1: quick screen
 
-Two light calls per wallet (portfolio history + current positions) reject wallets with less than 60 days of history or more than 15x leverage right now, before spending heavy API weight on them.
+Two light calls per wallet (portfolio history + current positions) reject, before spending heavy API weight:
+
+* less than 60 days of history, or more than 15x leverage right now;
+* more than 70% of lifetime PnL made in a single step of Hyperliquid's own PnL history (one lucky trade);
+* a PnL drawdown larger than 60% of average equity.
+
+These are deliberately looser than the final gates. Wallets that survive get a first pass on their latest 2,000 fills; only those that also pass the style, asset-class, leverage and open-loss gates on that sample have their full fill history downloaded (that is most of the API cost).
 
 ### Stage 2: deep scan and the 15 gates
 

@@ -136,8 +136,8 @@ export class HLClient {
   // Fills between startTime and now, walking forward in pages of up to 2000 (HL keeps the 10k most recent).
   // userFillsByTime pages ascend from startTime, so for very active wallets we first look at the latest
   // 2000 fills to estimate the fill rate and move the start forward so the pages end at "now".
-  async fillsSince(user, startTime, { maxPages = 5, ttlMs = 0 } = {}) {
-    const latest = await this.info({ type: 'userFills', user, aggregateByTime: true }, { ttlMs });
+  async fillsSince(user, startTime, { maxPages = 5, ttlMs = 0, latest: known = null } = {}) {
+    const latest = known || await this.info({ type: 'userFills', user, aggregateByTime: true }, { ttlMs });
     if (!Array.isArray(latest) || latest.length === 0) return [];
     // Fewer than 2000 fills ever: that's the whole history (kept even if older than the lookback).
     if (latest.length < 2000 || maxPages === 0) return [...latest].sort((a, b) => a.time - b.time);
