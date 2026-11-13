@@ -69,7 +69,7 @@ Daily returns are **realized PnL net of fees ÷ account value at that time**, us
 | Gate | Default | Why |
 |---|---|---|
 | Not a memecoin gambler | memecoins ≤ 35% of volume | Memecoin PnL is dominated by lottery-like jumps. Asset quality also feeds the score: indices, equities, commodities and FX score 1.0, BTC/ETH 0.9, large caps 0.65, alts 0.4, small caps 0.25, memes 0.1 |
-| Uses stops, sanely | stop on ≥ 40% of trades, sane stop on ≥ 30%, worst trade ≥ −15% of equity | For each trade covered by the order history, we look for a reduce-only trigger order placed while it was open. A trigger on the losing side of entry is a stop. "Sane" means 0.15% to 12% from entry and inside the liquidation distance (stop × leverage < 80%). If fewer than 10 trades are covered by order history, stop usage is not judged, but the worst-trade rule still applies |
+| Cuts losses ("Uses stops, sanely") | worst trade ≥ −15% of equity, worst 5% of trades ≥ −4% each; stop-order coverage optional (default 0) | For each trade covered by the order history we look for a trigger order on the exit side placed while it was open; on the losing side of entry it is a stop. "Sane" means 0.15% to 12% from entry and inside the liquidation distance (stop × leverage < 80%). On the first real scan most profitable wallets placed stop orders on under 10% of trades (they exit manually or with limit orders), so requiring stop orders removed almost everyone. Stop usage therefore feeds the score (12%), and the hard gate checks what actually matters, realized loss control. Raise `minStopCoverage` to make stop orders mandatory |
 | Funded by a large wallet (**off by default**) | a funding counterparty with ≥ $1M on HL | We check the HL balances of the biggest wallets that sent money in or received money out. Off by default because most money arrives via the Arbitrum bridge, which hides the original source; it still feeds the "professional" part of the score |
 
 #### Layer 3: skill vs luck
@@ -79,7 +79,7 @@ Daily returns are **realized PnL net of fees ÷ account value at that time**, us
 | Beats the luck benchmark | Deflated Sharpe ≥ 0.5 (daily or per-trade) and PSR ≥ 0.95 | See below |
 | Consistent over time | ≥ 60% of months positive (or ≥ 55% of weeks if under 3 months), and positive Sharpe in **both halves** of the history | Consistency, plus an out-of-sample check: a strategy that worked only in one half is likely luck or a regime it no longer fits |
 | Controlled drawdown | max drawdown ≤ 35% | Gamblers who got lucky usually show deep drawdowns first |
-| Not one lucky trade | best trade ≤ 30% of total profit; still profitable without the best 5% of trades | Kills "one moonshot" records |
+| Not one lucky trade | best trade ≤ 30% of total profit; still profitable without the best 1% of trades | Kills "one moonshot" records while still allowing positively skewed trend-following |
 | Healthy win/payoff mix | profit factor ≥ 1.15, and not win rate > 85% with payoff < 0.25 | The second pattern ("picking up pennies in front of a steamroller") looks great until one loss wipes it out |
 | Sane leverage, no liquidations | p90 gross exposure ≤ 15x equity, current ≤ 15x, 0 liquidations | Leverage turns noise into huge PnL both ways; a liquidation is a risk-management failure |
 | Not hiding losses | open PnL ≥ −25% of equity | Realized stats look great if you never close losers |

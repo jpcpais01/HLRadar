@@ -44,7 +44,8 @@ export const isPerpFill = (f) => typeof f.dir === 'string' && /Long|Short/.test(
 // Many good traders never go fully flat (they scale in and out of a running position), so round trips undercount
 // their decisions. A "closing event" is a burst of reducing fills in one coin (gaps < 1h); its realized PnL is one
 // sample of the trader's edge. These are the unit for win rate, payoff, concentration and per-trade Sharpe.
-export function closingEvents(fills) {
+export function closingEvents(fills, address = '') {
+  const me = address.toLowerCase();
   const byCoin = new Map();
   for (const f of fills) {
     if (!isPerpFill(f)) continue;
@@ -64,7 +65,7 @@ export function closingEvents(fills) {
       cur.pnl += num(f.closedPnl) - num(f.fee);
       cur.notional += num(f.px) * num(f.sz);
       cur.lastTime = f.time;
-      if (f.liquidation) cur.liquidated = true;
+      if (f.liquidation && (!me || (f.liquidation.liquidatedUser || '').toLowerCase() === me)) cur.liquidated = true;
     }
     if (cur) events.push(cur);
   }
@@ -284,7 +285,7 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
   const equityAt = makeEquityAt(hist, live.accountValue);
   const trades = buildTrades(fills, address);
   const closed = trades.filter((t) => !t.isOpen);
-  const events = closingEvents(fills);
+  const events = closingEvents(fills, address);
   const tradeRet = events.map((e) => e.pnl / equityAt(e.time));
   const exposure = exposureProfile(fills, equityAt, now);
 
@@ -338,7 +339,7 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
   const sumLoss = -S.sum(losses.map((t) => t.pnl));
   const totalPnl = S.sum([...dailyPnl.values()]); // realized PnL net of all fees
   const sortedPnl = events.map((t) => t.pnl).sort((a, b) => b - a);
-  const top5n = Math.max(1, Math.ceil(events.length * 0.05));
+  const topN = Math.max(1, Math.ceil(events.length * 0.01));
   const lev = exposure.levSamples;
   const cleanTrips = closed.filter((t) => !t.truncated);
   // Round-trip hold time when the trader goes flat often enough; otherwise the inventory-turnover estimate.
@@ -418,8 +419,8 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
 
     // concentration
     topTradeShare: totalPnl > 0 && sortedPnl.length ? sortedPnl[0] / totalPnl : null,
-    top5PctTradesShare: totalPnl > 0 ? S.sum(sortedPnl.slice(0, top5n)) / totalPnl : null,
-    pnlExTop5Pct: totalPnl - S.sum(sortedPnl.slice(0, top5n)),
+    top1PctTradesShare: totalPnl > 0 ? S.sum(sortedPnl.slice(0, topN)) / totalPnl : null,
+    pnlExTop1Pct: totalPnl - S.sum(sortedPnl.slice(0, topN)),
     topCoinPnlShare: positivePnlCoins.length ? Math.max(...positivePnlCoins) / S.sum(positivePnlCoins) : null,
 
     // leverage / risk

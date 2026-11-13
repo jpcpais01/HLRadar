@@ -29,12 +29,14 @@ export const DEFAULT_CONFIG = {
     style: { enabled: true, minMedianHoldHours: 0.25, maxMedianHoldHours: 168, maxTradesPerDay: 50, maxFillsPerDay: 400 },
     volume: { enabled: true, minVolume: 2e6, minMedianTradeNotional: 5000 },
     assetClass: { enabled: true, maxMemeShare: 0.35 },
-    riskManagement: { enabled: true, minStopCoverage: 0.4, minSaneStopShare: 0.3, minEvaluatedTrades: 10, worstTradeFloor: -0.15 },
+    // Stop orders: on real data most profitable HL wallets exit manually, so stop-order usage feeds the score by
+    // default and the hard gate is on realized loss control. Raise minStopCoverage to require stop orders.
+    riskManagement: { enabled: true, minStopCoverage: 0, minSaneStopShare: 0, minEvaluatedTrades: 10, worstTradeFloor: -0.15, p5TradeFloor: -0.04 },
     funding: { enabled: false, minCounterpartyValue: 1e6 },
     luck: { enabled: true, minDeflatedSharpe: 0.5, minPsr: 0.95 },
     consistency: { enabled: true, minPositiveMonthShare: 0.6, minPositiveWeekShare: 0.55, requireBothHalvesPositive: true },
     drawdown: { enabled: true, maxDrawdown: 0.35 },
-    concentration: { enabled: true, maxTopTradeShare: 0.3, requirePositiveExTop5: true },
+    concentration: { enabled: true, maxTopTradeShare: 0.3, requirePositiveExTop1Pct: true },
     payoff: { enabled: true, minProfitFactor: 1.15 },
     leverage: { enabled: true, maxP90Leverage: 15, maxCurrentLeverage: 15, maxLiquidations: 0 },
     openRisk: { enabled: true, minOpenPnlPct: -0.25 },
@@ -52,12 +54,12 @@ export const GATE_INFO = {
   style: { layer: 'Data & style', label: 'Intraday / few-day style', short: 'style', why: 'Median hold between 15 min and 7 days. Rejects market makers/HFT (not copyable) and long-term holders.' },
   volume: { layer: 'Data & style', label: 'Serious volume', short: 'volume', why: 'Large, sustained volume means real capital and real conviction, and filters out dust accounts.' },
   assetClass: { layer: 'Your filters', label: 'Not a memecoin gambler', short: 'memes', why: 'Memecoin PnL is dominated by lottery-like jumps. Equities, indices, commodities and majors reward analysis more.' },
-  riskManagement: { layer: 'Your filters', label: 'Uses stops, sanely', short: 'stops', why: 'Share of trades protected by a stop-loss placed while the trade was open, with a stop distance that is neither noise-tight nor beyond liquidation. Plus: no single trade lost more than 15% of equity.' },
+  riskManagement: { layer: 'Your filters', label: 'Uses stops, sanely', short: 'stops', why: 'Losses are cut: no single trade lost more than 15% of equity and the worst 5% of trades lose under 4% each. Stop orders placed while a trade was open (at a distance that is neither noise-tight nor past liquidation) raise the score; set a minimum stop coverage to make them mandatory.' },
   funding: { layer: 'Your filters', label: 'Funded by a large wallet', short: 'funding', why: 'At least one on-HL funding counterparty holds over $1M. Off by default: most deposits arrive through the bridge, which hides the source.' },
   luck: { layer: 'Skill vs luck', label: 'Beats the luck benchmark', short: 'luck', why: 'Deflated Sharpe Ratio: the probability that the Sharpe ratio beats what the luckiest zero-skill wallets would show, given how many wallets we screened, the shortlist size, fat tails and track length. Uses daily and per-trade returns; either can pass.' },
   consistency: { layer: 'Skill vs luck', label: 'Consistent over time', short: 'consistency', why: 'Most months (or weeks) profitable, and profitable in both halves of the history, an out-of-sample check.' },
   drawdown: { layer: 'Skill vs luck', label: 'Controlled drawdown', short: 'drawdown', why: 'Gamblers who later got lucky usually show deep drawdowns first.' },
-  concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', short: 'one trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 5% of trades.' },
+  concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', short: 'one trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 1% of trades.' },
   payoff: { layer: 'Skill vs luck', label: 'Healthy win/payoff mix', short: 'payoff', why: 'Profit factor above 1.15, and not the "picking up pennies" pattern (very high win rate with rare huge losses).' },
   leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', short: 'leverage', why: 'Huge leverage turns noise into huge PnL both ways; a liquidation is a risk-management failure.' },
   openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss.' },
@@ -84,9 +86,9 @@ export function evaluateGates(m, cfg) {
   const t = m.tpsl;
   const enoughOrders = t.evaluated >= g.riskManagement.minEvaluatedTrades;
   const stopsOk = !enoughOrders || (t.slCoverage >= g.riskManagement.minStopCoverage && t.saneStopShare >= g.riskManagement.minSaneStopShare);
-  add('riskManagement', stopsOk && m.worstTradePct >= g.riskManagement.worstTradeFloor,
-    enoughOrders ? `stops on ${pct(t.slCoverage)} of ${t.evaluated} recent trades (sane ${pct(t.saneStopShare)}, median ${pct(t.medianStopPct)} away); worst trade ${pct(m.worstTradePct)}`
-      : `only ${t.evaluated} trades covered by order history; worst trade ${pct(m.worstTradePct)}`,
+  add('riskManagement', stopsOk && m.worstTradePct >= g.riskManagement.worstTradeFloor && m.p5TradePct >= (g.riskManagement.p5TradeFloor ?? -1),
+    enoughOrders ? `stops on ${pct(t.slCoverage)} of ${t.evaluated} recent trades (sane ${pct(t.saneStopShare)}, median ${pct(t.medianStopPct)} away); worst trade ${pct(m.worstTradePct)}, worst-5% ${pct(m.p5TradePct)}`
+      : `only ${t.evaluated} trades covered by order history; worst trade ${pct(m.worstTradePct)}, worst-5% ${pct(m.p5TradePct)}`,
     enoughOrders ? null : 'Stop usage not judged: not enough order history');
 
   const bigCp = (m.flows.counterparties || []).filter((c) => (c.value || 0) >= g.funding.minCounterpartyValue);
@@ -100,8 +102,8 @@ export function evaluateGates(m, cfg) {
     && (!g.consistency.requireBothHalvesPositive || (m.sharpeFirstHalf > 0 && m.sharpeSecondHalf > 0));
   add('consistency', consPass, `${useMonths ? `${pct(m.positiveMonthShare)} of ${m.nMonths} months` : `${pct(m.positiveWeekShare)} of weeks`} positive; Sharpe 1st half ${f2(m.sharpeFirstHalf)}, 2nd half ${f2(m.sharpeSecondHalf)}`);
   add('drawdown', m.maxDrawdown <= g.drawdown.maxDrawdown, `max drawdown ${pct(m.maxDrawdown)}`);
-  add('concentration', m.totalPnl > 0 && (m.topTradeShare ?? 1) <= g.concentration.maxTopTradeShare && (!g.concentration.requirePositiveExTop5 || m.pnlExTop5Pct > 0),
-    `best trade = ${pct(m.topTradeShare)} of profit; PnL without top 5% trades $${Math.round(m.pnlExTop5Pct).toLocaleString()}`);
+  add('concentration', m.totalPnl > 0 && (m.topTradeShare ?? 1) <= g.concentration.maxTopTradeShare && (!g.concentration.requirePositiveExTop1Pct || m.pnlExTop1Pct > 0),
+    `best trade = ${pct(m.topTradeShare)} of profit; PnL without top 1% of trades $${Math.round(m.pnlExTop1Pct).toLocaleString()}`);
   const pennies = m.winRate > 0.85 && m.payoffRatio !== null && m.payoffRatio < 0.25;
   add('payoff', m.profitFactor >= g.payoff.minProfitFactor && !pennies, `profit factor ${f2(m.profitFactor)}, win rate ${pct(m.winRate)}, payoff ${f2(m.payoffRatio)}${pennies ? ' (pennies pattern)' : ''}`);
   add('leverage', m.p90Leverage <= g.leverage.maxP90Leverage && m.currentLeverage <= g.leverage.maxCurrentLeverage && m.liquidations <= g.leverage.maxLiquidations,
