@@ -39,7 +39,7 @@ Two light calls per wallet (portfolio history + current positions) reject, befor
 
 * less than 60 days of history, or more than 15x leverage right now;
 * more than 70% of lifetime PnL made in a single step of Hyperliquid's own PnL history (one lucky trade);
-* a PnL drawdown larger than 60% of average equity.
+* losing more than 60% of the account's equity (measured at the PnL peak) from a PnL peak. On the first real scan this alone removed about 60% of the high-ROI candidates, which is exactly the "got lucky after blowing up" profile.
 
 These are deliberately looser than the final gates. Wallets that survive get a first pass on their latest 2,000 fills; only those that also pass the style, asset-class, leverage and open-loss gates on that sample have their full fill history downloaded (that is most of the API cost).
 

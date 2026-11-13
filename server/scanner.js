@@ -115,19 +115,20 @@ export class Scanner {
     const reasons = [];
     if (g.longevity.enabled && historyDays < g.longevity.minDays) reasons.push(`history ${historyDays.toFixed(0)}d`);
     // Cheap luck checks on HL's own (deposit-neutral) PnL history, deliberately looser than the final gates.
+    // pnlHistory and accountValueHistory share timestamps; a drawdown is measured against equity at the PnL peak.
     const pnl = (all?.pnlHistory || []).map((p) => num(p[1]));
-    const avs = (all?.accountValueHistory || []).map((p) => num(p[1])).filter((v) => v > 0);
-    if (pnl.length > 10 && avs.length) {
-      const avgAv = avs.reduce((x, y) => x + y, 0) / avs.length;
+    const avs = (all?.accountValueHistory || []).map((p) => num(p[1]));
+    if (pnl.length > 10 && avs.length === pnl.length) {
       const total = pnl[pnl.length - 1] - pnl[0];
-      let peak = -Infinity, dd = 0, maxJump = 0;
+      let peakI = 0, worst = 0, maxJump = 0;
       for (let i = 0; i < pnl.length; i++) {
-        peak = Math.max(peak, pnl[i]);
-        dd = Math.max(dd, peak - pnl[i]);
+        if (pnl[i] > pnl[peakI]) peakI = i;
+        const eq = Math.max(avs[peakI], 1);
+        worst = Math.max(worst, (pnl[peakI] - pnl[i]) / eq);
         if (i) maxJump = Math.max(maxJump, pnl[i] - pnl[i - 1]);
       }
       if (g.concentration.enabled && total > 0 && maxJump / total > 0.7) reasons.push(`${Math.round((100 * maxJump) / total)}% of lifetime PnL in one step`);
-      if (g.drawdown.enabled && dd / avgAv > 0.6) reasons.push(`PnL drawdown ${Math.round((100 * dd) / avgAv)}% of avg equity`);
+      if (g.drawdown.enabled && worst > 0.6) reasons.push(`lost ${Math.round(100 * Math.min(worst, 9.99))}% of equity from a PnL peak`);
     }
     if (g.leverage.enabled && lev > g.leverage.maxCurrentLeverage) reasons.push(`leverage ${lev.toFixed(1)}x now`);
     return { pass: reasons.length === 0, reasons, portfolio };
