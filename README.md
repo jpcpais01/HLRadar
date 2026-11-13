@@ -14,7 +14,7 @@ Requires Node.js 18.17+ (no npm dependencies).
 npm start            # http://localhost:8787
 ```
 
-On first start with an empty `data/` folder it begins a scan automatically. The scan respects Hyperliquid's API rate limit (1200 weight/min per IP; we use 1000), so the first full pass over ~280 candidates takes roughly an hour or two. Results appear in the dashboard as wallets are analysed. Later scans skip wallets analysed in the last 24h.
+On first start with an empty `data/` folder it begins a scan automatically. The scan respects Hyperliquid's API rate limit (1200 weight/min per IP; we use 1000), so the first full pass over ~630 candidates takes a few hours (about 60% are rejected by the cheap quick screen). Results appear in the dashboard as wallets are analysed. Later scans skip wallets analysed in the last 24h.
 
 Other commands:
 
@@ -40,7 +40,7 @@ Click any wallet for its full profile: realized equity curve, monthly returns, e
 
 ## How the filtering works
 
-Short version: ~48k leaderboard wallets → size/volume/profit prefilter → cheap screen → deep scan → **15 hard gates** in three layers → survivors ranked by a skill score → top 25 finalists.
+Short version: ~48k leaderboard wallets → size/volume/profit prefilter → cheap screen → deep scan → **15 hard gates** in three layers → survivors ranked by a skill score → up to 25 core + 100 extended finalists.
 
 1. **Data & style**: enough trades, ≥ 60 days of history, still active, intraday to few-day holding period (rejects market makers and HODLers), serious volume.
 2. **Your filters**: not a memecoin gambler (TradFi and majors rewarded), uses stop-losses at sane distances, optionally funded by large wallets.

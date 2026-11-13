@@ -351,7 +351,8 @@ export class Scanner {
 
   consensusView() {
     const { finalists } = this.ranking();
-    const info = Object.fromEntries(finalists.map((f) => [f.metrics.address, { address: f.metrics.address, score: f.score, entity: f.entity, accountValue: f.metrics.accountValue }]));
+    const w = this.config.extended?.weight ?? 0.5;
+    const info = Object.fromEntries(finalists.map((f) => [f.metrics.address, { address: f.metrics.address, score: f.tier === 'extended' ? f.score * w : f.score, rawScore: f.score, tier: f.tier, entity: f.entity, accountValue: f.metrics.accountValue }]));
     const cons = consensus(Object.values(info), this.live.positions, this.live.openTimes, this.config.signals);
     const events = tradeEvents(this.live.fills, info, this.config.signals);
     const alerts = clusterAlerts(events, this.config.signals);

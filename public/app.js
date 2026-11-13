@@ -194,7 +194,7 @@ async function renderSignals() {
 // ---------- Finalists ----------
 const walletCols = (withFailed) => [
   { key: 'rank', label: '#', fmt: (r, i) => i + 1, sort: (r) => -r.score },
-  { key: 'address', label: 'Wallet', l: true, fmt: (r) => `<span class="mono">${short(r.address)}</span> ${r.name ? `<span class="muted">${esc(r.name)}</span>` : ''} ${r.source === 'vault' ? '<span class="chip">vault</span>' : ''}${r.entity !== r.address ? '<span class="chip" title="linked by funding to another scanned wallet">linked</span>' : ''}` },
+  { key: 'address', label: 'Wallet', l: true, fmt: (r) => `${r.tier === 'core' ? '<span class="chip strong" title="passes every strict gate">core</span>' : r.tier === 'extended' ? '<span class="chip moderate" title="passes the looser extended-tier gates; counts half in the consensus">ext</span>' : ''}<span class="mono">${short(r.address)}</span> ${r.name ? `<span class="muted">${esc(r.name)}</span>` : ''} ${r.source === 'vault' ? '<span class="chip">vault</span>' : ''}${r.entity !== r.address ? '<span class="chip" title="linked by funding to another scanned wallet">linked</span>' : ''}` },
   { key: 'score', label: 'Skill', fmt: (r) => `<b>${f2(r.score, 0)}</b>` },
   { key: 'accountValue', label: 'Equity', fmt: (r) => usd(r.accountValue) },
   { key: 'totalPnl', label: 'Realized PnL', fmt: (r) => usd(r.totalPnl), cls: (r) => sgn(r.totalPnl) },
@@ -217,7 +217,7 @@ async function renderFinalists(rank) {
   const el = $('#tab-finalists');
   const max = Math.max(...rank.funnel.map((f) => f.remaining), 1);
   let lastLayer = null;
-  const nearMiss = rank.rows.filter((r) => r.failed.length === 1);
+  const nearMiss = rank.rows.filter((r) => !r.tier && (r.failedExtended || r.failed).length === 1);
   el.innerHTML = `
     <div class="grid cols-2">
       <div class="card funnel"><h3 style="margin-top:0">Filter funnel</h3>${rank.funnel.map((f) => {
@@ -226,9 +226,9 @@ async function renderFinalists(rank) {
         return `${head}<div class="row"><span>${esc(f.label)}</span><div class="fb" style="width:${Math.max(0.4, (Math.log10(1 + f.remaining) / Math.log10(1 + max)) * 100)}%"></div><span class="mono" style="text-align:right">${f.remaining.toLocaleString()}</span></div>`;
       }).join('')}<p class="muted" style="font-size:12px">Bar lengths are log-scaled. Gates apply in order; every gate is explained in the Filters tab.</p></div>
       <div class="card"><h3 style="margin-top:0">Finalists</h3>
-        <p class="sub" style="margin:0">Wallets that pass every enabled gate, ranked by skill score (top ${CONFIG.finalists.count}). These drive the Signals and Trade feed tabs.</p>
+        <p class="sub" style="margin:0"><b>Core</b>: pass every strict gate (top ${CONFIG.finalists.count}). <b>Extended</b>: pass slightly looser luck, consistency and loss gates but every safety rule (top ${CONFIG.extended.count}); they count ${pct(CONFIG.extended.weight, 0)} in the consensus. Both drive the Signals and Trade feed tabs.</p>
         <div class="grid cols-4" style="margin-top:12px">
-          <div class="kpi"><div class="v">${rank.finalists.length}</div><div class="l">finalists</div></div>
+          <div class="kpi"><div class="v">${rank.finalists.filter((r) => r.tier === 'core').length} + ${rank.finalists.filter((r) => r.tier === 'extended').length}</div><div class="l">core + extended finalists</div></div>
           <div class="kpi"><div class="v">${usd(rank.finalists.reduce((s, r) => s + (r.accountValue || 0), 0))}</div><div class="l">combined equity</div></div>
           <div class="kpi"><div class="v">${nearMiss.length}</div><div class="l">near misses (fail 1 gate)</div></div>
         </div>
@@ -365,7 +365,7 @@ async function openWallet(addr) {
       ['Win rate', pct(m.winRate)], ['Payoff ratio', f2(m.payoffRatio)], ['Profit factor', f2(m.profitFactor)], ['Expectancy/trade', pct(m.expectancyPct, 2)],
       ['Sortino', f2(m.annSortino)], ['PSR (vs 0)', f2(m.psr)], ['DSR daily', f2(m.dsr)], ['DSR per-trade', f2(m.tradeDsr)],
       ['Max drawdown', pct(m.maxDrawdown)], ['+ Months', `${pct(m.positiveMonthShare, 0)} of ${m.nMonths}`], ['Sharpe 1st / 2nd half', `${f2(m.sharpeFirstHalf)} / ${f2(m.sharpeSecondHalf)}`], ['Best trade share', pct(m.topTradeShare)],
-      ['Median leverage', `${f2(m.medianLeverage, 1)}x`], ['p90 leverage', `${f2(m.p90Leverage, 1)}x`], ['Current leverage', `${f2(m.currentLeverage, 1)}x`], ['Liquidations', m.liquidations],
+      ['Median leverage', `${f2(m.medianLeverage, 1)}x`], ['p90 leverage', `${f2(m.p90Leverage, 1)}x`], ['Current leverage', `${f2(m.currentLeverage, 1)}x`], ['Liquidations (material / all)', `${m.materialLiquidations ?? '–'} / ${m.liquidations}`],
       ['Stops used', `${pct(m.tpsl.slCoverage, 0)} of ${m.tpsl.evaluated}`], ['Median stop dist', pct(m.tpsl.medianStopPct, 2)], ['Take-profits', pct(m.tpsl.tpCoverage, 0)], ['Median R:R', f2(m.tpsl.medianRR)],
       ['Volume', usd(m.volume)], ['Maker share', pct(m.makerShare, 0)], ['Worst trade', pct(m.worstTradePct)], ['Open PnL', pct(m.openPnlPct)],
     ].map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div style="font-weight:600">${v}</div></div>`).join('')}</div></div>

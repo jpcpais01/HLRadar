@@ -10,7 +10,7 @@ export const DEFAULT_CONFIG = {
     minAllTimePnl: 10000,
     requirePositiveMonth: true,
     maxMonthlyTurnover: 800, // month volume / account value; above this is market-making / HFT territory
-    deepScanCount: 250, // how many prefiltered wallets get the full (rate-limited) analysis
+    deepScanCount: 600, // how many prefiltered wallets get the full (rate-limited) analysis
     includeVaults: true, // vault leaders are literally small funds on HL
     minVaultTvl: 100000,
   },
@@ -42,6 +42,23 @@ export const DEFAULT_CONFIG = {
     openRisk: { enabled: true, minOpenPnlPct: -0.25 },
   },
   finalists: { count: 25 },
+  // Second tier: wallets that miss a strict gate but pass these slightly looser versions. The hard safety rules
+  // (leverage, material liquidations, memecoins, open losses, max drawdown, activity) are NOT relaxed.
+  extended: {
+    enabled: true,
+    count: 100,
+    weight: 0.5, // their vote in the consensus, relative to a core finalist with the same skill score
+    gates: {
+      luck: { minDeflatedSharpe: 0.15, minPsr: 0.85 },
+      consistency: { minPositiveMonthShare: 0.5, minPositiveWeekShare: 0.5 },
+      riskManagement: { p5TradeFloor: -0.06, worstTradeFloor: -0.2 },
+      concentration: { maxTopTradeShare: 0.4 },
+      style: { maxMedianHoldHours: 336 },
+      volume: { minVolume: 1e6 },
+      sample: { minTrades: 30 },
+      payoff: { minProfitFactor: 1.1 },
+    },
+  },
   // Number of "trials" for multiple-testing correction. 0 = use number of wallets that passed the size/volume prefilter.
   nTrialsOverride: 0,
   signals: { bigTradeUsd: 250000, bigTradeEquityPct: 0.25, freshHours: 48 },
@@ -61,7 +78,7 @@ export const GATE_INFO = {
   drawdown: { layer: 'Skill vs luck', label: 'Controlled drawdown', short: 'drawdown', why: 'Gamblers who later got lucky usually show deep drawdowns first.' },
   concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', short: 'one trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 1% of trades.' },
   payoff: { layer: 'Skill vs luck', label: 'Healthy win/payoff mix', short: 'payoff', why: 'Profit factor above 1.15, and not the "picking up pennies" pattern (very high win rate with rare huge losses).' },
-  leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', short: 'leverage', why: 'Huge leverage turns noise into huge PnL both ways; a liquidation is a risk-management failure.' },
+  leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', short: 'leverage', why: 'Huge leverage turns noise into huge PnL both ways. A liquidation that cost 2%+ of equity is a risk-management failure (tiny liquidations of small isolated side positions are ignored).' },
   openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss.' },
 };
 
@@ -106,8 +123,8 @@ export function evaluateGates(m, cfg) {
     `best trade = ${pct(m.topTradeShare)} of profit; PnL without top 1% of trades $${Math.round(m.pnlExTop1Pct).toLocaleString()}`);
   const pennies = m.winRate > 0.85 && m.payoffRatio !== null && m.payoffRatio < 0.25;
   add('payoff', m.profitFactor >= g.payoff.minProfitFactor && !pennies, `profit factor ${f2(m.profitFactor)}, win rate ${pct(m.winRate)}, payoff ${f2(m.payoffRatio)}${pennies ? ' (pennies pattern)' : ''}`);
-  add('leverage', m.p90Leverage <= g.leverage.maxP90Leverage && m.currentLeverage <= g.leverage.maxCurrentLeverage && m.liquidations <= g.leverage.maxLiquidations,
-    `p90 trade leverage ${f2(m.p90Leverage)}x, now ${f2(m.currentLeverage)}x, ${m.liquidations} liquidations`);
+  add('leverage', m.p90Leverage <= g.leverage.maxP90Leverage && m.currentLeverage <= g.leverage.maxCurrentLeverage && (m.materialLiquidations ?? m.liquidations) <= g.leverage.maxLiquidations,
+    `p90 trade leverage ${f2(m.p90Leverage)}x, now ${f2(m.currentLeverage)}x, ${m.materialLiquidations ?? m.liquidations} material liquidations (${m.liquidations} total)`);
   add('openRisk', m.openPnlPct >= g.openRisk.minOpenPnlPct, `open PnL ${pct(m.openPnlPct)} of equity`);
   return out;
 }
@@ -159,15 +176,22 @@ export function applyLuck(m, nTrials, topK) {
 }
 
 export function rankWallets(analyses, cfg, nTrials = 10000) {
-  for (const a of analyses) applyLuck(a.metrics, nTrials, cfg.finalists.count);
+  // The luck benchmark depends on how many wallets we shortlist in total (core + extended).
+  const k = cfg.finalists.count + (cfg.extended?.enabled ? cfg.extended.count : 0);
+  for (const a of analyses) applyLuck(a.metrics, nTrials, k);
+  const extCfg = cfg.extended?.enabled ? mergeConfig(cfg, { gates: cfg.extended.gates }) : cfg;
   const rows = analyses.map((a) => {
     const gates = evaluateGates(a.metrics, cfg);
-    const failed = gates.filter((g) => g.enabled && !g.pass);
-    return { ...a, gates, failed: failed.map((g) => g.id), score: skillScore(a.metrics), components: scoreComponents(a.metrics) };
+    const failed = gates.filter((g) => g.enabled && !g.pass).map((g) => g.id);
+    let failedExtended = failed;
+    if (failed.length && cfg.extended?.enabled) failedExtended = evaluateGates(a.metrics, extCfg).filter((g) => g.enabled && !g.pass).map((g) => g.id);
+    const tier = !failed.length ? 'core' : cfg.extended?.enabled && !failedExtended.length ? 'extended' : null;
+    return { ...a, gates, failed, failedExtended, tier, score: skillScore(a.metrics), components: scoreComponents(a.metrics) };
   });
   rows.sort((a, b) => a.failed.length - b.failed.length || b.score - a.score);
-  const passing = rows.filter((r) => r.failed.length === 0);
-  const finalists = passing.slice(0, cfg.finalists.count);
+  const core = rows.filter((r) => r.tier === 'core').slice(0, cfg.finalists.count);
+  const extended = rows.filter((r) => r.tier === 'extended').sort((a, b) => b.score - a.score).slice(0, cfg.extended?.count ?? 0);
+  const finalists = [...core, ...extended];
   // Funnel: wallets surviving each enabled gate, applied in order.
   const funnel = [];
   let alive = rows;
@@ -176,6 +200,8 @@ export function rankWallets(analyses, cfg, nTrials = 10000) {
     alive = alive.filter((r) => r.gates.find((g) => g.id === id).pass);
     funnel.push({ id, label: GATE_INFO[id].label, layer: GATE_INFO[id].layer, remaining: alive.length });
   }
+  const extendedCount = rows.filter((r) => r.tier).length;
+  if (cfg.extended?.enabled) funnel.push({ id: 'extended', label: 'Core + extended tier (looser luck/consistency)', layer: 'Finalists', remaining: extendedCount });
   return { rows, finalists, funnel };
 }
 

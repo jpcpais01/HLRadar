@@ -31,7 +31,7 @@ Applied to every leaderboard row:
 
 The wallets that pass the **size and volume** rules (not the PnL rules) are counted as the number of **trials**, N. That is the population we implicitly searched, and it drives the luck correction below.
 
-The best 250 by a broad pre-score (return on capital, recent form, size) plus up to 30 profitable vaults are sent on. Vaults are included because they are literally small funds running on Hyperliquid.
+The best 600 by a broad pre-score (return on capital, recent form, size) plus up to 30 profitable vaults are sent on. Vaults are included because they are literally small funds running on Hyperliquid.
 
 ### Stage 1: quick screen
 
@@ -81,7 +81,7 @@ Daily returns are **realized PnL net of fees ÷ account value at that time**, us
 | Controlled drawdown | max drawdown ≤ 35% | Gamblers who got lucky usually show deep drawdowns first |
 | Not one lucky trade | best trade ≤ 30% of total profit; still profitable without the best 1% of trades | Kills "one moonshot" records while still allowing positively skewed trend-following |
 | Healthy win/payoff mix | profit factor ≥ 1.15, and not win rate > 85% with payoff < 0.25 | The second pattern ("picking up pennies in front of a steamroller") looks great until one loss wipes it out |
-| Sane leverage, no liquidations | p90 gross exposure ≤ 15x equity, current ≤ 15x, 0 liquidations | Leverage turns noise into huge PnL both ways; a liquidation is a risk-management failure |
+| Sane leverage, no liquidations | p90 gross exposure ≤ 15x equity, current ≤ 15x, 0 *material* liquidations (costing ≥ 2% of equity) | Leverage turns noise into huge PnL both ways; a real liquidation is a risk-management failure. On the first scan 45% of wallets had some liquidation, but two thirds of those were tiny isolated side positions, so only material ones count |
 | Not hiding losses | open PnL ≥ −25% of equity | Realized stats look great if you never close losers |
 
 ### The luck test (Deflated Sharpe Ratio)
@@ -93,6 +93,17 @@ Daily returns are **realized PnL net of fees ÷ account value at that time**, us
 The test runs on two series and passes if either does: daily returns (few observations, measures the whole book) and per-trade returns (many observations, which is where an active intraday trader's evidence lives).
 
 N and k come from settings (`nTrialsOverride`, `finalists.count`), and DSR is recomputed whenever they change.
+
+## Core and extended finalists
+
+A shortlist of 5-10 wallets makes a thin consensus. So there are two tiers:
+
+* **Core**: passes every strict gate above.
+* **Extended**: misses a strict gate, but passes slightly looser versions of the *statistical* gates: Deflated Sharpe ≥ 0.15 (PSR ≥ 0.85), ≥ 50% positive months/weeks, worst-5% trades ≥ −6%, worst trade ≥ −20%, best trade ≤ 40% of profit, profit factor ≥ 1.1, ≥ 30 trades, median hold up to 14 days, volume ≥ $1M. The **safety rules are not relaxed**: leverage, material liquidations, memecoins, max drawdown, open losses, activity and history length stay exactly as strict.
+
+Extended finalists count half (`extended.weight`) in the consensus. Both tiers are configurable in `extended` in the settings.
+
+The luck benchmark uses the total shortlist size (core + extended, k = 125 by default), because that's how many wallets we're picking.
 
 ## Skill score (ranking the survivors)
 

@@ -427,6 +427,8 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
     medianLeverage: lev.length ? S.median(lev) : 0,
     p90Leverage: lev.length ? S.quantile(lev, 0.9) : 0,
     liquidations: events.filter((t) => t.liquidated).length,
+    // A liquidation costing >= 2% of equity. Tiny isolated side positions getting liquidated are common and harmless.
+    materialLiquidations: events.filter((t) => t.liquidated && t.pnl / equityAt(t.time) <= -0.02).length,
 
     // asset class
     assetMix: mix,

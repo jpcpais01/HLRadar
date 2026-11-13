@@ -27,7 +27,7 @@ async function readBody(req) {
 function summary(r) {
   const m = r.metrics;
   return {
-    address: m.address, entity: r.entity, source: r.meta?.source, name: r.meta?.displayName, score: r.score, failed: r.failed,
+    address: m.address, entity: r.entity, source: r.meta?.source, name: r.meta?.displayName, score: r.score, failed: r.failed, failedExtended: r.failedExtended, tier: r.tier,
     accountValue: m.accountValue, totalPnl: m.totalPnl, totalReturn: m.totalReturn, annSharpe: m.annSharpe, dsr: m.dsr, tradeDsr: m.tradeDsr,
     maxDrawdown: m.maxDrawdown, nTrades: m.nTrades, winRate: m.winRate, profitFactor: m.profitFactor, medianHoldHours: m.medianHoldHours,
     medianLeverage: m.medianLeverage, assetMix: m.assetMix, tradfiShare: m.tradfiShare, memeShare: m.memeShare, slCoverage: m.tpsl.slCoverage,
