@@ -40,6 +40,8 @@ export const DEFAULT_CONFIG = {
     payoff: { enabled: true, minProfitFactor: 1.15 },
     leverage: { enabled: true, maxP90Leverage: 15, maxCurrentLeverage: 15, maxLiquidations: 0 },
     openRisk: { enabled: true, minOpenPnlPct: -0.25 },
+    // Bag holding: positions replayed against hourly prices, so open-position pain counts even if it was later closed green.
+    bagHolding: { enabled: true, minWorstOpenLoss: -0.25, maxMtmDrawdown: 0.35, minWorstMae: -0.25, maxRescuedBags: 2, deepLossPct: 0.1, maxLoserHoldRatio: 4, minPriceCoverage: 0.5 },
   },
   finalists: { count: 25 },
   // Second tier: wallets that miss a strict gate but pass these slightly looser versions. The hard safety rules
@@ -79,7 +81,8 @@ export const GATE_INFO = {
   concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', short: 'one trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 1% of trades.' },
   payoff: { layer: 'Skill vs luck', label: 'Healthy win/payoff mix', short: 'payoff', why: 'Profit factor above 1.15, and not the "picking up pennies" pattern (very high win rate with rare huge losses).' },
   leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', short: 'leverage', why: 'Huge leverage turns noise into huge PnL both ways. A liquidation that cost 2%+ of equity is a risk-management failure (tiny liquidations of small isolated side positions are ignored).' },
-  openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss.' },
+  openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss right now.' },
+  bagHolding: { layer: 'Skill vs luck', label: "Doesn't sit on losers", short: 'bag holder', why: 'Replays every position against hourly prices. Rejects wallets that, at any point in the history, carried open losses beyond 25% of equity, had a mark-to-market drawdown (open PnL included) over 35%, let a single trade go 25%+ of equity underwater, repeatedly rode 10%+ losers back to breakeven ("rescued bags"), or hold losers 4x longer than winners. Realized PnL hides all of these.' },
 };
 
 const pct = (x) => (x === null || x === undefined ? 'n/a' : `${(x * 100).toFixed(1)}%`);
@@ -126,6 +129,22 @@ export function evaluateGates(m, cfg) {
   add('leverage', m.p90Leverage <= g.leverage.maxP90Leverage && m.currentLeverage <= g.leverage.maxCurrentLeverage && (m.materialLiquidations ?? m.liquidations) <= g.leverage.maxLiquidations,
     `p90 trade leverage ${f2(m.p90Leverage)}x, now ${f2(m.currentLeverage)}x, ${m.materialLiquidations ?? m.liquidations} material liquidations (${m.liquidations} total)`);
   add('openRisk', m.openPnlPct >= g.openRisk.minOpenPnlPct, `open PnL ${pct(m.openPnlPct)} of equity`);
+
+  const b = g.bagHolding || DEFAULT_CONFIG.gates.bagHolding;
+  const x = m.mtm;
+  if (!x || x.priceCoverage < b.minPriceCoverage) {
+    add('bagHolding', true, x ? `price history covers only ${pct(x.priceCoverage)} of holding time` : 'no price history yet (re-run the scan)', 'Not judged: missing price history');
+  } else {
+    const fails = [];
+    if (x.worstOpenLossPct < b.minWorstOpenLoss) fails.push('open loss');
+    if (x.mtmMaxDrawdown > b.maxMtmDrawdown) fails.push('drawdown');
+    if (x.worstMaePct < b.minWorstMae) fails.push('worst trade');
+    if (x.rescuedBags > b.maxRescuedBags) fails.push('rescued bags');
+    if (x.loserHoldRatio !== null && x.loserHoldRatio > b.maxLoserHoldRatio) fails.push('hold ratio');
+    add('bagHolding', fails.length === 0,
+      `worst open loss ${pct(x.worstOpenLossPct)}, drawdown with open PnL ${pct(x.mtmMaxDrawdown)} (realized ${pct(m.maxDrawdown)}), worst trade went ${pct(x.worstMaePct)} underwater, ${x.rescuedBags} losers ridden back from ${pct(-b.deepLossPct)}+, losers held ${x.loserHoldRatio === null ? 'n/a' : f2(x.loserHoldRatio) + 'x'} as long as winners`,
+      fails.length ? `Failed on: ${fails.join(', ')}` : null);
+  }
   return out;
 }
 
@@ -135,11 +154,27 @@ export const SCORE_WEIGHTS = {
   discipline: 0.12, assetQuality: 0.1, sample: 0.06, leverage: 0.05, professional: 0.05,
 };
 
+// How quickly losers get cut, from the mark-to-market replay: 1 = losers never went deep and are not held longer
+// than winners; 0 = a trade went 30%+ of equity underwater or losers are held 5x+ longer. null without price data.
+export function cutsLosers(m) {
+  const x = m.mtm;
+  if (!x || x.priceCoverage < 0.5) return null;
+  const depth = clamp(1 + x.worstMaePct / 0.3, 0, 1);
+  const hold = x.loserHoldRatio === null ? 0.5 : clamp(1 - (x.loserHoldRatio - 1) / 4, 0, 1);
+  const rescued = clamp(1 - x.rescuedBags / 4, 0, 1);
+  return 0.5 * depth + 0.25 * hold + 0.25 * rescued;
+}
+
 export function scoreComponents(m) {
   const t = m.tpsl;
-  const disc = t.evaluated >= 10
+  const stops = t.evaluated >= 10
     ? 0.5 * (t.slCoverage ?? 0) + 0.3 * (t.saneStopShare ?? 0) + 0.2 * clamp(1 + m.worstTradePct / 0.15, 0, 1)
     : 0.35 + 0.3 * clamp(1 + m.worstTradePct / 0.15, 0, 1); // unknown stop usage: neutral-ish
+  // Discipline = stop usage blended with how fast losers are actually cut (open-loss depth, hold asymmetry).
+  const cut = cutsLosers(m);
+  const disc = cut === null ? stops : 0.5 * stops + 0.5 * cut;
+  // Drawdown counts open losses too: the worse of the realized and the mark-to-market drawdown.
+  const dd = Math.max(m.maxDrawdown, m.mtm && m.mtm.priceCoverage >= 0.5 ? m.mtm.mtmMaxDrawdown : 0);
   const cons = m.nMonths >= 3 ? m.positiveMonthShare : m.positiveWeekShare ?? 0;
   const pro = clamp(
     (m.pro?.subAccounts > 0 ? 0.3 : 0) + (m.pro?.apiAgents > 0 ? 0.3 : 0) + (m.pro?.isVault ? 0.4 : 0)
@@ -148,7 +183,7 @@ export function scoreComponents(m) {
     luck: clamp(0.5 * m.dsr + 0.5 * m.tradeDsr, 0, 1),
     riskAdjusted: clamp(m.annSortino / 5, 0, 1),
     consistency: clamp(((cons ?? 0) - 0.4) / 0.5, 0, 1),
-    drawdown: clamp(1 - m.maxDrawdown / 0.5, 0, 1),
+    drawdown: clamp(1 - dd / 0.5, 0, 1),
     payoff: clamp((m.profitFactor - 1) / 1.5, 0, 1),
     discipline: clamp(disc, 0, 1),
     assetQuality: clamp(m.assetQuality, 0, 1),

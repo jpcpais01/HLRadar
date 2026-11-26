@@ -5,6 +5,7 @@ import * as S from '../server/stats.js';
 import { classify } from '../server/assets.js';
 import { DEFAULT_CONFIG, rankWallets, evaluateGates } from '../server/filters.js';
 import { consensus, tradeEvents, clusterAlerts } from '../server/consensus.js';
+import { markToMarket, mergeCandles, neededPriceRanges } from '../server/mtm.js';
 
 const H = 3600e3, D = 24 * H;
 let tid = 1;
@@ -165,6 +166,66 @@ test('end to end: disciplined trader becomes a finalist, gambler is rejected', (
   const badRow = rows.find((r) => r.metrics.address === b.metrics.address);
   assert.ok(badRow.failed.includes('assetClass'));
   assert.ok(badRow.failed.includes('leverage'));
+});
+
+// Hourly candles at a flat price, with optional dips (t0 -> {l, h, c}) to simulate open-position pain.
+function flatCandles(from, to, px, dips = new Map()) {
+  const out = [];
+  for (let t = Math.floor(from / H) * H; t < to; t += H) out.push({ t, T: t + H - 1, o: px, h: px, l: px, c: px, ...(dips.get(t) || {}) });
+  return out;
+}
+
+test('mark to market: a long that sinks 40% of equity and is closed green is a rescued bag', () => {
+  const t0 = Date.UTC(2026, 0, 1);
+  const fills = [fill('BTC', 'B', 10, 100, t0, 0), fill('BTC', 'A', 10, 101, t0 + 48 * H, 10, 10)];
+  const dips = new Map();
+  for (let k = 10; k < 30; k++) dips.set(t0 + k * H, { l: 60, c: 62 });
+  const prices = new Map([['BTC', flatCandles(t0, t0 + 50 * H, 100, dips)]]);
+  const x = markToMarket({ fills, prices, equityAt: () => 1000, now: t0 + 60 * H });
+  assert.ok(Math.abs(x.worstMaePct - -0.4) < 1e-3, `mae ${x.worstMaePct}`); // incl. the opening fee
+  assert.ok(x.worstOpenLossPct <= -0.38);
+  assert.ok(x.mtmMaxDrawdown > 0.35);
+  assert.equal(x.bagTrades, 1);
+  assert.equal(x.rescuedBags, 1);
+  assert.ok(x.priceCoverage > 0.99);
+  // The same trade with a tight stop: small MAE, nothing rescued.
+  const stopped = [fill('BTC', 'B', 10, 100, t0, 0), fill('BTC', 'A', 10, 97, t0 + 3 * H, 10, -30)];
+  const y = markToMarket({ fills: stopped, prices, equityAt: () => 1000, now: t0 + 60 * H });
+  assert.ok(y.worstMaePct > -0.04 && y.rescuedBags === 0, JSON.stringify(y));
+});
+
+test('mark to market: candle merging and needed ranges', () => {
+  const t0 = Date.UTC(2026, 0, 1);
+  const c4 = [0, 1, 2].map((i) => ({ t: t0 + i * 4 * H, T: t0 + (i + 1) * 4 * H - 1, h: '2', l: '1', c: '1.5' }));
+  const c1 = [8, 9].map((i) => ({ t: t0 + i * H, T: t0 + (i + 1) * H - 1, h: '2', l: '1', c: '1.5' }));
+  const m = mergeCandles(c1, c4);
+  assert.deepEqual(m.map((x) => x.t), [t0, t0 + 4 * H, t0 + 8 * H, t0 + 9 * H]);
+  const r = neededPriceRanges([fill('ETH', 'B', 1, 10, t0, 0), fill('ETH', 'A', 1, 10, t0 + 60e3, 1), fill('SOL', 'B', 1, 10, t0, 0), fill('SOL', 'A', 1, 10, t0 + 5 * H, 1)], t0 + 10 * H);
+  assert.ok(!r.has('ETH'));
+  assert.deepEqual(r.get('SOL'), [t0, t0 + 5 * H]);
+});
+
+test('bag holder with a perfect realized record is rejected; same trader cutting losses passes', () => {
+  const now = Date.now();
+  const w = synthWallet({ seed: 7, days: 150, tradesPerDay: 2, edge: 0.12, riskPct: 0.004, coin: 'xyz:XYZ100', lev: 2, now });
+  const opens = w.fills.filter((f) => f.dir.startsWith('Open'));
+  const clean = new Map([['xyz:XYZ100', flatCandles(now - 151 * D, now, 100)]]);
+  // Every 10th trade first sinks 15% against the position (30% of equity at 2x) before coming back.
+  const dips = new Map();
+  opens.forEach((f, i) => {
+    if (i % 10) return;
+    const long = f.side === 'B';
+    for (let t = Math.ceil(f.time / H) * H + H; t + H < f.time + 6 * H; t += H) dips.set(t, long ? { l: 85, c: 86 } : { h: 115, c: 114 });
+  });
+  const pain = new Map([['xyz:XYZ100', flatCandles(now - 151 * D, now, 100, dips)]]);
+  const a = computeMetrics({ address: '0x' + '1'.repeat(40), ...w, nTrials: 5000, topK: 25, now, prices: clean });
+  const b = computeMetrics({ address: '0x' + '2'.repeat(40), ...w, nTrials: 5000, topK: 25, now, prices: pain });
+  assert.equal(a.metrics.maxDrawdown, b.metrics.maxDrawdown); // realized stats can't tell them apart
+  const fa = evaluateGates(a.metrics, DEFAULT_CONFIG).filter((g) => g.enabled && !g.pass).map((g) => g.id);
+  const fb = evaluateGates(b.metrics, DEFAULT_CONFIG).filter((g) => g.enabled && !g.pass).map((g) => g.id);
+  assert.deepEqual(fa, []);
+  assert.deepEqual(fb, ['bagHolding']);
+  assert.ok(b.metrics.mtm.rescuedBags > 2 && b.metrics.mtm.worstMaePct < -0.25);
 });
 
 test('consensus: entities dedupe, agreement and cluster alerts', () => {

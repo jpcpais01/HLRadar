@@ -7,6 +7,7 @@ import { computeMetrics, buildTrades, parsePositions } from './analyze.js';
 import { setMeta } from './assets.js';
 import { DEFAULT_CONFIG, mergeConfig, rankWallets, evaluateGates } from './filters.js';
 import { consensus, tradeEvents, clusterAlerts } from './consensus.js';
+import { PriceStore } from './prices.js';
 
 const DAY = 86400e3;
 const num = (x) => Number(x || 0);
@@ -27,6 +28,7 @@ export class Scanner {
     this.funders = readJson(path.join(dataDir, 'funders.json')) || {};
     this.config = mergeConfig(DEFAULT_CONFIG, readJson(path.join(dataDir, 'config.json')));
     this.hl = new HLClient({ cacheDir: path.join(dataDir, 'cache'), weightPerMinute: this.config.scan.weightPerMinute });
+    this.prices = new PriceStore({ hl: this.hl, dir: path.join(dataDir, 'prices') });
     this.universe = readJson(path.join(dataDir, 'universe.json'));
     this.analyses = new Map();
     for (const f of fs.readdirSync(this.walletDir)) {
@@ -169,14 +171,22 @@ export class Scanner {
     return this.finishAnalysis(addr, raw, meta, offline);
   }
 
-  computeFor(addr, raw, meta, offline) {
+  computeFor(addr, raw, meta, offline, prices = null) {
     const { fills, orders, ledger, states } = raw;
-        return computeMetrics({ address: addr, fills, portfolio: raw.portfolio, orders, ledger, states, nTrials: this.nTrials(), topK: this.config.finalists.count, now: offline ? raw.fetchedAt : Date.now(), cfg: this.config.gates.riskManagement });
+    return computeMetrics({
+      address: addr, fills, portfolio: raw.portfolio, orders, ledger, states, nTrials: this.nTrials(), topK: this.config.finalists.count,
+      now: offline ? raw.fetchedAt : Date.now(), cfg: this.config.gates.riskManagement, prices, mtmCfg: this.config.gates.bagHolding,
+    });
   }
 
   async finishAnalysis(addr, raw, meta, offline) {
     const { subs, agents, dexes } = raw;
-    const res = this.computeFor(addr, raw, meta, offline);
+    // Hourly candles for every coin held 1h+, to mark positions to market (bag-holding detection). Shared cache;
+    // offline re-analysis still fetches missing candles unless HL_OFFLINE_PRICES=1.
+    let prices = null;
+    try { prices = await this.prices.forFills(raw.fills, { now: offline ? raw.fetchedAt : Date.now(), offline: process.env.HL_OFFLINE_PRICES === '1' }); }
+    catch (e) { this.progress.errors.push(`prices ${addr}: ${e.message}`); }
+    const res = this.computeFor(addr, raw, meta, offline, prices);
     res.metrics.pro = {
       subAccounts: Array.isArray(subs) ? subs.length : 0,
       apiAgents: Array.isArray(agents) ? agents.filter((a) => !/mobile|qr|app/i.test(a.name || '')).length : 0,

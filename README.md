@@ -40,7 +40,7 @@ Click any wallet for its full profile: realized equity curve, monthly returns, e
 
 ## How the filtering works
 
-Short version: ~48k leaderboard wallets → size/volume/profit prefilter → cheap screen → deep scan → **15 hard gates** in three layers → survivors ranked by a skill score → up to 25 core + 100 extended finalists.
+Short version: ~48k leaderboard wallets → size/volume/profit prefilter → cheap screen → deep scan → **16 hard gates** in three layers → survivors ranked by a skill score → up to 25 core + 100 extended finalists.
 
 1. **Data & style**: enough trades, ≥ 60 days of history, still active, intraday to few-day holding period (rejects market makers and HODLers), serious volume.
 2. **Your filters**: not a memecoin gambler (TradFi and majors rewarded), uses stop-losses at sane distances, optionally funded by large wallets.
@@ -55,9 +55,11 @@ The full explanation, with every threshold and the formulas, is in **[docs/FILTE
 ```
 server/hl.js          Hyperliquid API client: weight-based rate limiter, retries, disk cache
 server/analyze.js     Pure analysis: round trips, closing events, TP/SL detection, flows, metrics
+server/mtm.js         Mark-to-market replay of fills vs hourly candles (bag-holding detection)
+server/prices.js      Hourly/4h candle cache per coin, shared across wallets
 server/stats.js       Sharpe, Sortino, PSR, Deflated Sharpe, drawdown, normal cdf/inverse
 server/assets.js      Asset-class classification (incl. HIP-3 markets like xyz:NVDA)
-server/filters.js     Default config, the 15 gates, skill score, funnel
+server/filters.js     Default config, the 16 gates, skill score, funnel
 server/consensus.js   Consensus per asset, trade events, clustered-entry alerts
 server/scanner.js     Orchestration: universe -> quick screen -> two-pass deep scan -> live tracking
 server/index.js       HTTP server (JSON API + static dashboard)
@@ -65,7 +67,7 @@ public/               Dashboard (vanilla JS + SVG charts, no build step)
 test/                 node:test suite
 ```
 
-Data lives in `data/` (git-ignored): `universe.json`, `wallets/*.json` (computed analyses), `raw/*.json.gz` (raw API data for offline re-analysis), `config.json` (your threshold overrides).
+Data lives in `data/` (git-ignored): `universe.json`, `wallets/*.json` (computed analyses), `raw/*.json.gz` (raw API data for offline re-analysis), `config.json` (your threshold overrides), `prices/` (cached candles).
 
 ## Caveats
 
