@@ -286,7 +286,7 @@ async function renderFilters() {
   const g = CONFIG.gates;
   const layers = {};
   for (const [id, info] of Object.entries(META.gates)) (layers[info.layer] ||= []).push([id, info]);
-  const labels = { minTrades: 'min trades', minActiveDays: 'min active days', minDays: 'min days', maxDaysSinceLastTrade: 'max days since last trade', minMedianHoldHours: 'min median hold (h)', maxMedianHoldHours: 'max median hold (h)', maxTradesPerDay: 'max trades/day', minVolume: 'min volume $', minMedianTradeNotional: 'min median trade $', maxMemeShare: 'max meme share (0-1)', minStopCoverage: 'min stop coverage (0-1)', minSaneStopShare: 'min sane-stop share (0-1)', minEvaluatedTrades: 'min trades with order history', worstTradeFloor: 'worst trade floor (-0.15 = -15%)', p5TradeFloor: 'worst-5% trade floor', requirePositiveExTop1Pct: 'profitable without top 1% trades', requireBothHalvesPositive: 'both halves profitable', maxFillsPerDay: 'max fills/day', minCounterpartyValue: 'min counterparty value $', minDeflatedSharpe: 'min deflated Sharpe (0-1)', minPsr: 'min PSR vs 0 (0-1)', minPositiveMonthShare: 'min positive months (0-1)', minPositiveWeekShare: 'min positive weeks (0-1)', maxDrawdown: 'max drawdown (0-1)', maxTopTradeShare: 'max best-trade share (0-1)', minProfitFactor: 'min profit factor', maxP90Leverage: 'max p90 leverage', maxCurrentLeverage: 'max current leverage', maxLiquidations: 'max liquidations', minOpenPnlPct: 'min open PnL (-0.25 = -25%)' };
+  const labels = { minTrades: 'min trades', minActiveDays: 'min active days', minDays: 'min days', maxDaysSinceLastTrade: 'max days since last trade', minMedianHoldHours: 'min median hold (h)', maxMedianHoldHours: 'max median hold (h)', maxTradesPerDay: 'max trades/day', minVolume: 'min volume $', minMedianTradeNotional: 'min median trade $', maxMemeShare: 'max meme share (0-1)', minStopCoverage: 'min stop coverage (0-1)', minSaneStopShare: 'min sane-stop share (0-1)', minEvaluatedTrades: 'min trades with order history', worstTradeFloor: 'worst trade floor (-0.15 = -15%)', p5TradeFloor: 'worst-5% trade floor', requirePositiveExTop1Pct: 'profitable without top 1% trades', requireBothHalvesPositive: 'both halves profitable', maxFillsPerDay: 'max fills/day', minCounterpartyValue: 'min counterparty value $', minDeflatedSharpe: 'min deflated Sharpe (0-1)', minPsr: 'min PSR vs 0 (0-1)', minPositiveMonthShare: 'min positive months (0-1)', minPositiveWeekShare: 'min positive weeks (0-1)', maxDrawdown: 'max drawdown (0-1)', maxTopTradeShare: 'max best-trade share (0-1)', minProfitFactor: 'min profit factor', maxP90Leverage: 'max p90 leverage', maxCurrentLeverage: 'max current leverage', maxLiquidations: 'max liquidations', minOpenPnlPct: 'min open PnL (-0.25 = -25%)', softOpenPnlPct: 'open loss checked vs history below (-0.1 = -10%)', maxOpenVsWorstTrade: 'max open loss vs worst closed trade (x)', minWorstOpenLoss: 'worst open loss ever (-0.25 = -25%)', maxMtmDrawdown: 'max drawdown incl. open PnL (0-1)', minWorstMae: 'worst trade underwater (-0.25 = -25%)', maxRescuedBags: 'max losers ridden back to even', deepLossPct: 'deep loser threshold (0.1 = 10% of equity)', maxLoserHoldRatio: 'max loser/winner hold ratio', minPriceCoverage: 'min price coverage to judge (0-1)' };
   el.innerHTML = `
     <div class="method">
       <h2>How the filters work</h2>
@@ -369,6 +369,18 @@ async function openWallet(addr) {
       ['Stops used', `${pct(m.tpsl.slCoverage, 0)} of ${m.tpsl.evaluated}`], ['Median stop dist', pct(m.tpsl.medianStopPct, 2)], ['Take-profits', pct(m.tpsl.tpCoverage, 0)], ['Median R:R', f2(m.tpsl.medianRR)],
       ['Volume', usd(m.volume)], ['Maker share', pct(m.makerShare, 0)], ['Worst trade', pct(m.worstTradePct)], ['Open PnL', pct(m.openPnlPct)],
     ].map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div style="font-weight:600">${v}</div></div>`).join('')}</div></div>
+    <h3>Bag holding check (positions replayed against hourly prices)</h3>
+    <div class="card">${m.mtm ? `<div class="grid cols-4">${[
+      ['Drawdown incl. open PnL', `${pct(m.mtm.mtmMaxDrawdown)} <span class="muted">(realized ${pct(m.maxDrawdown)})</span>`],
+      ['Worst open loss ever', pct(m.mtm.worstOpenLossPct)],
+      ['Worst trade underwater', `${pct(m.mtm.worstMaePct)} <span class="muted">(closed at worst ${pct(m.mtm.worstRealizedPct)})</span>`],
+      ['Losers ridden back to even', `${m.mtm.rescuedBags} of ${m.mtm.bagTrades} deep losers`],
+      ['Loser vs winner hold', m.mtm.loserHoldRatio === null ? 'n/a' : `${f2(m.mtm.loserHoldRatio, 1)}x <span class="muted">(${hold(m.mtm.loserHoldHours)} vs ${hold(m.mtm.winnerHoldHours)})</span>`],
+      ['Time with 10%+ open loss', pct(m.mtm.deepOpenLossShare, 1)],
+      ['Time below equity peak', pct(m.mtm.mtmUnderwaterShare, 0)],
+      ['Price coverage', pct(m.mtm.priceCoverage, 0)],
+    ].map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div style="font-weight:600">${v}</div></div>`).join('')}</div>
+      <div id="dbag" style="margin-top:10px"></div>` : '<div class="muted">No price history for this wallet yet. Re-run the scan to compute it.</div>'}</div>
     <h3>Open positions</h3><div class="card" id="dpos"></div>
     <h3>Funding & flows</h3><div class="card">
       <div class="grid cols-4">
@@ -379,6 +391,14 @@ async function openWallet(addr) {
       </div>
       <div id="dcp" style="margin-top:10px"></div></div>
     <h3>Recent trades</h3><div class="card" id="dtr"></div>`;
+  if (m.mtm) table($('#dbag'), m.mtm.worstTrades || [], [
+    { key: 'openTime', label: 'Opened', l: true, fmt: (t) => new Date(t.openTime).toLocaleString() },
+    { key: 'coin', label: 'Asset', l: true, fmt: (t) => `<b>${coinName(t.coin)}</b>` },
+    { key: 'side', label: 'Side', fmt: (t) => sideChip(t.side) },
+    { key: 'holdHours', label: 'Held', fmt: (t) => hold(t.holdHours) + (t.isOpen ? ' (open)' : '') },
+    { key: 'maePct', label: 'Worst point', fmt: (t) => pct(t.maePct), cls: () => 'neg' },
+    { key: 'netPnlPct', label: 'Closed at', fmt: (t) => (t.isOpen ? '<span class="muted">still open</span>' : pct(t.netPnlPct)), cls: (t) => sgn(t.netPnlPct) },
+  ], { sortKey: 'maePct', desc: false, empty: 'No trades went underwater.' });
   table($('#dpos'), w.live || [], [
     { key: 'coin', label: 'Asset', l: true, fmt: (p) => `<b>${coinName(p.coin)}</b>` },
     { key: 'side', label: 'Side', fmt: (p) => sideChip(p.side) },

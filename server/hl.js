@@ -92,7 +92,7 @@ export class HLClient {
         if (res.status === 429) throw Object.assign(new Error('rate limited'), { retry: true, backoff: 10000 });
         if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status} for ${body.type}`), { retry: res.status >= 500 });
         const data = await res.json();
-        if (Array.isArray(data)) this.limiter.charge(Math.floor(data.length / 20));
+        if (Array.isArray(data)) this.limiter.charge(Math.floor(data.length / (body.type === 'candleSnapshot' ? 60 : 20)));
         if (ttlMs) this.writeCache(key, data);
         return data;
       } catch (e) {
@@ -132,6 +132,10 @@ export class HLClient {
   ledger(user, startTime = 0, ttlMs = 0) { return this.info({ type: 'userNonFundingLedgerUpdates', user, startTime }, { ttlMs }); }
   subAccounts(user, ttlMs = 0) { return this.info({ type: 'subAccounts', user }, { ttlMs }); }
   extraAgents(user, ttlMs = 0) { return this.info({ type: 'extraAgents', user }, { ttlMs }); }
+  // OHLC candles; HL returns at most the latest 5000 candles inside [startTime, endTime].
+  candles(coin, interval, startTime, endTime) {
+    return this.info({ type: 'candleSnapshot', req: { coin, interval, startTime: Math.floor(startTime), endTime: Math.floor(endTime) } });
+  }
 
   // Fills between startTime and now, walking forward in pages of up to 2000 (HL keeps the 10k most recent).
   // userFillsByTime pages ascend from startTime, so for very active wallets we first look at the latest

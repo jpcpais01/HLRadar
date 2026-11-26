@@ -13,7 +13,7 @@ So HL Radar never trusts a single number. A wallet has to pass a series of indep
   └─ Stage 0  Universe prefilter (free; uses the leaderboard file)
        └─ Stage 1  Quick screen (cheap API calls: portfolio + positions)
             └─ Stage 2  Deep scan (fills, orders, transfers; ~800 API weight per wallet)
-                 └─ 15 hard gates  ──►  survivors ranked by skill score  ──►  top 25 finalists
+                 └─ 16 hard gates  ──►  survivors ranked by skill score  ──►  top 25 finalists
                                                                                    └─ Stage 3  live positions & fills → consensus + signals
 ```
 
@@ -43,7 +43,7 @@ Two light calls per wallet (portfolio history + current positions) reject, befor
 
 These are deliberately looser than the final gates. Wallets that survive get a first pass on their latest 2,000 fills; only those that also pass the style, asset-class, leverage and open-loss gates on that sample have their full fill history downloaded (that is most of the API cost).
 
-### Stage 2: deep scan and the 15 gates
+### Stage 2: deep scan and the 16 gates
 
 For each surviving wallet we download up to 8,000 recent fills, the last 2,000 orders, all transfers, and current positions on every perp dex it trades (including HIP-3 markets like `xyz:NVDA`). Raw data is saved, so metrics can be recomputed offline.
 
@@ -82,7 +82,24 @@ Daily returns are **realized PnL net of fees ÷ account value at that time**, us
 | Not one lucky trade | best trade ≤ 30% of total profit; still profitable without the best 1% of trades | Kills "one moonshot" records while still allowing positively skewed trend-following |
 | Healthy win/payoff mix | profit factor ≥ 1.15, and not win rate > 85% with payoff < 0.25 | The second pattern ("picking up pennies in front of a steamroller") looks great until one loss wipes it out |
 | Sane leverage, no liquidations | p90 gross exposure ≤ 15x equity, current ≤ 15x, 0 *material* liquidations (costing ≥ 2% of equity) | Leverage turns noise into huge PnL both ways; a real liquidation is a risk-management failure. On the first scan 45% of wallets had some liquidation, but two thirds of those were tiny isolated side positions, so only material ones count |
-| Not hiding losses | open PnL ≥ −25% of equity | Realized stats look great if you never close losers |
+| Not hiding losses | open PnL ≥ −25% of equity right now, and not below −10% when that is 5x+ the worst loss the wallet ever closed | Realized stats look great if you never close losers. A wallet whose worst closed trade is −0.6% sitting on a −20% open loss is not cutting losses, it is waiting |
+| Doesn't sit on losers ("bag holding") | over the whole history: open losses never beyond −25% of equity, drawdown including open PnL ≤ 35%, no single trade more than 25% of equity underwater, at most 2 losers ridden from −10% back to about breakeven, losers not held 4x+ longer than winners | See below |
+
+### Catching bag holders (mark-to-market replay)
+
+Everything above that uses PnL uses *realized* PnL: it only moves when a position is closed. That has a blind spot. A trader who buys, watches the position fall 40%, refuses to close, and finally gets out at +1% when it comes back books a *winning* trade. Their realized curve is smooth, their realized drawdown is tiny and their win rate is great. The "not hiding losses" gate only looked at open PnL at the moment of the scan, so any bag that had already recovered was invisible. On the first real data, most finalists had a realized drawdown of 0-4%, which is too good to be true for active traders.
+
+So for every wallet we now download hourly price candles (4-hour candles for history older than ~200 days, which is as far back as Hyperliquid serves 1-hour ones) for every coin it held for an hour or more, and replay its fills against them. That gives:
+
+* **Maximum adverse excursion** per position: the worst point the trade reached (realized-in-trade + open PnL), as % of equity.
+* **Rescued bags**: positions that went at least 10% of equity underwater and were then closed at roughly breakeven or better. One is bad luck; a habit is the pattern this gate targets.
+* **Drawdown including open PnL**: the same additive equity index as the realized one, but marked to market every hour.
+* **Worst open loss ever**: the historical version of the "not hiding losses" gate.
+* **Loser vs winner hold time** (the "disposition effect"): median hold of losing round trips ÷ median hold of winners.
+
+These feed the hard gate above (a safety rule, so it is not relaxed for the extended tier), and the skill score: the drawdown part uses the worse of the realized and mark-to-market drawdown, and the discipline part is now half stop usage, half "cuts losers" (how deep trades went underwater, hold asymmetry, rescued bags).
+
+Limits: candles fully inside the time a position was held are used, so trades shorter than an hour are judged on their fill prices only (they can't hide much pain anyway). Missing candles (delisted coins) can only hide pain, never invent it, so a wallet that fails on partial price data still fails; one that passes with less than half of its holding time priced is flagged "only partly judged". Candles are cached in `data/prices` and shared by all wallets, so the first scan after this change downloads them once (roughly 10-30 minutes of API budget), later scans only the new hours.
 
 ### The luck test (Deflated Sharpe Ratio)
 
@@ -111,10 +128,10 @@ The luck benchmark uses the total shortlist size (core + extended, k = 125 by de
 |---|---|---|
 | Luck (avg of daily and per-trade DSR) | 22% | as is |
 | Consistency (positive months or weeks) | 14% | 40% → 0, 90% → 1 |
-| Discipline (stop coverage, sane stops, worst trade) | 12% | blend; neutral when stop data is missing |
+| Discipline (stop usage + cutting losers) | 12% | half stop coverage / sane stops / worst trade (neutral when stop data is missing), half how deep trades went underwater, loser-vs-winner hold time and rescued bags |
 | Risk-adjusted return (annual Sortino) | 10% | 0 → 0, 5 → 1 |
 | Asset quality | 10% | volume-weighted class quality above |
-| Drawdown | 8% | 0% → 1, 50% → 0 |
+| Drawdown (worse of realized and mark-to-market) | 8% | 0% → 1, 50% → 0 |
 | Payoff (profit factor) | 8% | 1.0 → 0, 2.5 → 1 |
 | Sample size | 6% | log scale, 500 closes → 1 |
 | Leverage | 5% | 0x → 1, 20x → 0 |
@@ -139,7 +156,7 @@ Computed from finalists' live positions, refreshed every 2 minutes:
 ## Known limits
 
 * Hyperliquid only returns the latest 10,000 fills and 2,000 orders per wallet, so very active traders are judged on a shorter window, and stop-loss usage on recent trades only.
-* Realized-PnL returns ignore funding payments and open PnL (open PnL is checked separately by the "not hiding losses" gate).
+* Realized-PnL returns ignore funding payments and open PnL. Open PnL is covered by the mark-to-market replay (bag-holding gate, drawdown and discipline score), which uses hourly candles, so pain inside a single hour is not seen.
 * Bridge deposits do not reveal the source wallet on Arbitrum. Following that would need an Arbitrum RPC or indexer, which is a natural next step.
 * Asset classification uses curated lists plus each market's max leverage; new listings default to "alt" until the lists are updated in `server/assets.js`.
 * Survivorship: wallets that blew up and left don't appear on the leaderboard. This makes the leaderboard look better than reality, which is one more reason to keep the luck benchmark strict.

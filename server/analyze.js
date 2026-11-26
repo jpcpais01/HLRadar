@@ -2,6 +2,7 @@
 // Everything here is pure (no network), so it can be unit-tested and re-run cheaply.
 import * as S from './stats.js';
 import { classify, CLASSES, isTradFi } from './assets.js';
+import { markToMarket } from './mtm.js';
 
 const DAY = 86400e3;
 const num = (x) => (x === null || x === undefined ? 0 : Number(x));
@@ -278,7 +279,7 @@ export function parsePositions(states) {
 }
 
 // ---------- Full metric set ----------
-export function computeMetrics({ address, fills: allFills, portfolio, orders, ledger, states, nTrials, topK = 1, now = Date.now(), cfg = {} }) {
+export function computeMetrics({ address, fills: allFills, portfolio, orders, ledger, states, nTrials, topK = 1, now = Date.now(), cfg = {}, prices = null, mtmCfg = {} }) {
   const fills = allFills.filter(isPerpFill);
   const live = parsePositions(states);
   const hist = equityHistory(portfolio);
@@ -439,7 +440,14 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
 
     tpsl,
     flows,
+    // Mark-to-market (open PnL included) view; null when no price history was available (cheap first pass).
+    mtm: prices ? markToMarket({ fills, prices, equityAt, now, cfg: mtmCfg }) : null,
   };
+  // The live snapshot is the latest mark: candles only cover finished hours, and some positions predate the fills.
+  if (m.mtm && live.accountValue > 0 && m.openPnlPct < m.mtm.worstOpenLossPct) {
+    m.mtm.worstOpenLossPct = m.openPnlPct;
+    m.mtm.worstOpenLossAt = now;
+  }
 
   const series = {
     days,
