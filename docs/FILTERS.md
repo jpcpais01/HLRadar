@@ -82,7 +82,7 @@ Daily returns are **realized PnL net of fees ÷ account value at that time**, us
 | Not one lucky trade | best trade ≤ 30% of total profit; still profitable without the best 1% of trades | Kills "one moonshot" records while still allowing positively skewed trend-following |
 | Healthy win/payoff mix | profit factor ≥ 1.15, and not win rate > 85% with payoff < 0.25 | The second pattern ("picking up pennies in front of a steamroller") looks great until one loss wipes it out |
 | Sane leverage, no liquidations | p90 gross exposure ≤ 15x equity, current ≤ 15x, 0 *material* liquidations (costing ≥ 2% of equity) | Leverage turns noise into huge PnL both ways; a real liquidation is a risk-management failure. On the first scan 45% of wallets had some liquidation, but two thirds of those were tiny isolated side positions, so only material ones count |
-| Not hiding losses | open PnL ≥ −25% of equity right now | Realized stats look great if you never close losers |
+| Not hiding losses | open PnL ≥ −25% of equity right now, and not below −10% when that is 5x+ the worst loss the wallet ever closed | Realized stats look great if you never close losers. A wallet whose worst closed trade is −0.6% sitting on a −20% open loss is not cutting losses, it is waiting |
 | Doesn't sit on losers ("bag holding") | over the whole history: open losses never beyond −25% of equity, drawdown including open PnL ≤ 35%, no single trade more than 25% of equity underwater, at most 2 losers ridden from −10% back to about breakeven, losers not held 4x+ longer than winners | See below |
 
 ### Catching bag holders (mark-to-market replay)

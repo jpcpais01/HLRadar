@@ -39,7 +39,7 @@ export const DEFAULT_CONFIG = {
     concentration: { enabled: true, maxTopTradeShare: 0.3, requirePositiveExTop1Pct: true },
     payoff: { enabled: true, minProfitFactor: 1.15 },
     leverage: { enabled: true, maxP90Leverage: 15, maxCurrentLeverage: 15, maxLiquidations: 0 },
-    openRisk: { enabled: true, minOpenPnlPct: -0.25 },
+    openRisk: { enabled: true, minOpenPnlPct: -0.25, softOpenPnlPct: -0.1, maxOpenVsWorstTrade: 5 },
     // Bag holding: positions replayed against hourly prices, so open-position pain counts even if it was later closed green.
     bagHolding: { enabled: true, minWorstOpenLoss: -0.25, maxMtmDrawdown: 0.35, minWorstMae: -0.25, maxRescuedBags: 2, deepLossPct: 0.1, maxLoserHoldRatio: 4, minPriceCoverage: 0.5 },
   },
@@ -81,7 +81,7 @@ export const GATE_INFO = {
   concentration: { layer: 'Skill vs luck', label: 'Not one lucky trade', short: 'one trade', why: 'Biggest trade under 30% of profit, and still profitable after removing the best 1% of trades.' },
   payoff: { layer: 'Skill vs luck', label: 'Healthy win/payoff mix', short: 'payoff', why: 'Profit factor above 1.15, and not the "picking up pennies" pattern (very high win rate with rare huge losses).' },
   leverage: { layer: 'Skill vs luck', label: 'Sane leverage, no liquidations', short: 'leverage', why: 'Huge leverage turns noise into huge PnL both ways. A liquidation that cost 2%+ of equity is a risk-management failure (tiny liquidations of small isolated side positions are ignored).' },
-  openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on a large open loss right now.' },
+  openRisk: { layer: 'Skill vs luck', label: 'Not hiding losses', short: 'open loss', why: 'Realized stats look great if you never close losers. Rejects wallets sitting on an open loss over 25% of equity right now, or over 10% when that is 5x+ the worst loss they have ever closed.' },
   bagHolding: { layer: 'Skill vs luck', label: "Doesn't sit on losers", short: 'bag holder', why: 'Replays every position against hourly prices. Rejects wallets that, at any point in the history, carried open losses beyond 25% of equity, had a mark-to-market drawdown (open PnL included) over 35%, let a single trade go 25%+ of equity underwater, repeatedly rode 10%+ losers back to breakeven ("rescued bags"), or hold losers 4x longer than winners. Realized PnL hides all of these.' },
 };
 
@@ -128,7 +128,11 @@ export function evaluateGates(m, cfg) {
   add('payoff', m.profitFactor >= g.payoff.minProfitFactor && !pennies, `profit factor ${f2(m.profitFactor)}, win rate ${pct(m.winRate)}, payoff ${f2(m.payoffRatio)}${pennies ? ' (pennies pattern)' : ''}`);
   add('leverage', m.p90Leverage <= g.leverage.maxP90Leverage && m.currentLeverage <= g.leverage.maxCurrentLeverage && (m.materialLiquidations ?? m.liquidations) <= g.leverage.maxLiquidations,
     `p90 trade leverage ${f2(m.p90Leverage)}x, now ${f2(m.currentLeverage)}x, ${m.materialLiquidations ?? m.liquidations} material liquidations (${m.liquidations} total)`);
-  add('openRisk', m.openPnlPct >= g.openRisk.minOpenPnlPct, `open PnL ${pct(m.openPnlPct)} of equity`);
+  // An open loss far bigger than anything the wallet ever realizes is the bag-holding tell, even below the hard floor.
+  const o = g.openRisk;
+  const hugeVsHistory = m.openPnlPct < (o.softOpenPnlPct ?? -1) && -m.openPnlPct > (o.maxOpenVsWorstTrade ?? Infinity) * Math.max(-m.worstTradePct, 0.005);
+  add('openRisk', m.openPnlPct >= o.minOpenPnlPct && !hugeVsHistory,
+    `open PnL ${pct(m.openPnlPct)} of equity; worst closed trade ${pct(m.worstTradePct)}${hugeVsHistory ? ` (open loss is ${f2(m.openPnlPct / Math.min(m.worstTradePct, -0.005))}x the worst loss it ever closed)` : ''}`);
 
   const b = g.bagHolding || DEFAULT_CONFIG.gates.bagHolding;
   const x = m.mtm;

@@ -257,3 +257,14 @@ test('consensus: entities dedupe, agreement and cluster alerts', () => {
   assert.equal(alerts[0].coin, 'SOL');
   assert.equal(alerts[0].entities, 2);
 });
+
+test('open loss far beyond anything ever closed fails "not hiding losses"', () => {
+  const now = Date.now();
+  const w = synthWallet({ seed: 7, days: 150, tradesPerDay: 2, edge: 0.12, riskPct: 0.004, coin: 'xyz:XYZ100', lev: 2, now });
+  const a = computeMetrics({ address: '0x' + '1'.repeat(40), ...w, nTrials: 5000, topK: 25, now });
+  const gate = (m) => evaluateGates(m, DEFAULT_CONFIG).find((g) => g.id === 'openRisk').pass;
+  assert.ok(gate({ ...a.metrics, openPnlPct: -0.02 }));
+  assert.ok(!gate({ ...a.metrics, openPnlPct: -0.207 })); // worst closed trade is under 1%: -20.7% open is a bag
+  assert.ok(gate({ ...a.metrics, openPnlPct: -0.12, worstTradePct: -0.1 })); // a big swing trader can sit at -12%
+  assert.ok(!gate({ ...a.metrics, openPnlPct: -0.3, worstTradePct: -0.1 }));
+});

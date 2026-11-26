@@ -443,6 +443,11 @@ export function computeMetrics({ address, fills: allFills, portfolio, orders, le
     // Mark-to-market (open PnL included) view; null when no price history was available (cheap first pass).
     mtm: prices ? markToMarket({ fills, prices, equityAt, now, cfg: mtmCfg }) : null,
   };
+  // The live snapshot is the latest mark: candles only cover finished hours, and some positions predate the fills.
+  if (m.mtm && live.accountValue > 0 && m.openPnlPct < m.mtm.worstOpenLossPct) {
+    m.mtm.worstOpenLossPct = m.openPnlPct;
+    m.mtm.worstOpenLossAt = now;
+  }
 
   const series = {
     days,
