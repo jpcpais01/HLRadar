@@ -132,8 +132,8 @@ export function evaluateGates(m, cfg) {
 
   const b = g.bagHolding || DEFAULT_CONFIG.gates.bagHolding;
   const x = m.mtm;
-  if (!x || x.priceCoverage < b.minPriceCoverage) {
-    add('bagHolding', true, x ? `price history covers only ${pct(x.priceCoverage)} of holding time` : 'no price history yet (re-run the scan)', 'Not judged: missing price history');
+  if (!x) {
+    add('bagHolding', true, 'no price history yet (re-run the scan)', 'Not judged: missing price history');
   } else {
     const fails = [];
     if (x.worstOpenLossPct < b.minWorstOpenLoss) fails.push('open loss');
@@ -141,9 +141,11 @@ export function evaluateGates(m, cfg) {
     if (x.worstMaePct < b.minWorstMae) fails.push('worst trade');
     if (x.rescuedBags > b.maxRescuedBags) fails.push('rescued bags');
     if (x.loserHoldRatio !== null && x.loserHoldRatio > b.maxLoserHoldRatio) fails.push('hold ratio');
+    // Missing candles can only hide pain, never invent it: a failure on partial data still counts.
+    const thin = x.priceCoverage < b.minPriceCoverage;
     add('bagHolding', fails.length === 0,
-      `worst open loss ${pct(x.worstOpenLossPct)}, drawdown with open PnL ${pct(x.mtmMaxDrawdown)} (realized ${pct(m.maxDrawdown)}), worst trade went ${pct(x.worstMaePct)} underwater, ${x.rescuedBags} losers ridden back from ${pct(-b.deepLossPct)}+, losers held ${x.loserHoldRatio === null ? 'n/a' : f2(x.loserHoldRatio) + 'x'} as long as winners`,
-      fails.length ? `Failed on: ${fails.join(', ')}` : null);
+      `worst open loss ${pct(x.worstOpenLossPct)}, drawdown with open PnL ${pct(x.mtmMaxDrawdown)} (realized ${pct(m.maxDrawdown)}), worst trade went ${pct(x.worstMaePct)} underwater, ${x.rescuedBags} losers ridden back from ${pct(-b.deepLossPct)}+, losers held ${x.loserHoldRatio === null ? 'n/a' : f2(x.loserHoldRatio) + 'x'} as long as winners; prices cover ${pct(x.priceCoverage)} of holding time`,
+      fails.length ? `Failed on: ${fails.join(', ')}` : thin ? 'Only partly judged: price history is incomplete' : null);
   }
   return out;
 }
@@ -158,7 +160,7 @@ export const SCORE_WEIGHTS = {
 // than winners; 0 = a trade went 30%+ of equity underwater or losers are held 5x+ longer. null without price data.
 export function cutsLosers(m) {
   const x = m.mtm;
-  if (!x || x.priceCoverage < 0.5) return null;
+  if (!x) return null;
   const depth = clamp(1 + x.worstMaePct / 0.3, 0, 1);
   const hold = x.loserHoldRatio === null ? 0.5 : clamp(1 - (x.loserHoldRatio - 1) / 4, 0, 1);
   const rescued = clamp(1 - x.rescuedBags / 4, 0, 1);

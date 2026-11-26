@@ -99,7 +99,7 @@ So for every wallet we now download hourly price candles (4-hour candles for his
 
 These feed the hard gate above (a safety rule, so it is not relaxed for the extended tier), and the skill score: the drawdown part uses the worse of the realized and mark-to-market drawdown, and the discipline part is now half stop usage, half "cuts losers" (how deep trades went underwater, hold asymmetry, rescued bags).
 
-Limits: candles fully inside the time a position was held are used, so trades shorter than an hour are judged on their fill prices only (they can't hide much pain anyway). When less than half of a wallet's holding time has price data (delisted coins), the gate is marked "not judged" instead of guessed. Candles are cached in `data/prices` and shared by all wallets, so the first scan after this change downloads them once (roughly 10-30 minutes of API budget), later scans only the new hours.
+Limits: candles fully inside the time a position was held are used, so trades shorter than an hour are judged on their fill prices only (they can't hide much pain anyway). Missing candles (delisted coins) can only hide pain, never invent it, so a wallet that fails on partial price data still fails; one that passes with less than half of its holding time priced is flagged "only partly judged". Candles are cached in `data/prices` and shared by all wallets, so the first scan after this change downloads them once (roughly 10-30 minutes of API budget), later scans only the new hours.
 
 ### The luck test (Deflated Sharpe Ratio)
 

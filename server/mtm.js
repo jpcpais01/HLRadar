@@ -82,9 +82,8 @@ export function markToMarket({ fills, prices, equityAt, now = Date.now(), cfg = 
 
     const mark = (from, to) => {
       // Position (szi @ entry) held unchanged from `from` to `to`.
-      if (!szi || to <= from) return;
-      heldMs += to - from;
-      if (to - from < HOUR) return;
+      if (!szi || to - from < 2 * HOUR) return; // shorter holds are judged on fill prices (no full candle inside)
+      heldMs += Math.floor(to / HOUR) * HOUR - Math.ceil(from / HOUR) * HOUR; // the part whole 1h candles can cover
       for (let i = firstIdx(series, from); i < series.length && series[i].T <= to; i++) {
         const c = series[i];
         const adverse = szi > 0 ? c.l : c.h;
