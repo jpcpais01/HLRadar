@@ -1,0 +1,13 @@
+{
+  "name": "hl-radar",
+  "version": "0.1.0",
+  "description": "Find skilled Hyperliquid traders (not lucky ones) and watch what they're positioned in.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=18.17" },
+  "scripts": {
+    "start": "node server/index.js",
+    "scan": "node server/cli.js scan",
+    "test": "node --test test/*.test.js"
+  }
+}

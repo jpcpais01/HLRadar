@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HL Radar</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="dot"></span> HL Radar <small>skill, not luck</small></div>
+    <nav id="tabs">
+      <button data-tab="signals" class="active">Signals</button>
+      <button data-tab="finalists">Finalists</button>
+      <button data-tab="feed">Trade feed</button>
+      <button data-tab="wallets">All scanned</button>
+      <button data-tab="filters">Filters</button>
+    </nav>
+    <div class="status" id="status">…</div>
+  </header>
+  <main>
+    <section id="tab-signals" class="tab active"></section>
+    <section id="tab-finalists" class="tab"></section>
+    <section id="tab-feed" class="tab"></section>
+    <section id="tab-wallets" class="tab"></section>
+    <section id="tab-filters" class="tab"></section>
+  </main>
+  <aside id="drawer" class="drawer hidden"><button class="close" id="drawer-close" aria-label="Close">×</button><div id="drawer-body"></div></aside>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
