@@ -129,11 +129,35 @@ async function refreshStatus() {
 function byWallet(events) {
   const m = new Map();
   for (const e of events) {
-    const w = m.get(e.address) || { address: e.address, notional: 0, qty: 0 };
-    w.notional += e.notional; w.qty += e.qty;
+    const w = m.get(e.address) || { address: e.address, notional: 0, qty: 0, first: e.time, last: e.lastTime ?? e.time, n: 0 };
+    w.notional += e.notional; w.qty += e.qty; w.n++;
+    w.first = Math.min(w.first, e.time); w.last = Math.max(w.last, e.lastTime ?? e.time);
     m.set(e.address, w);
   }
-  return [...m.values()].sort((x, y) => y.notional - x.notional);
+  return [...m.values()];
+}
+// Short local timestamp, e.g. "Nov 26, 14:05".
+const when = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+// Duration in ms as "45m", "3.2h", "1.5d".
+const span = (ms) => hold(ms / 3600e3);
+function alertCard(a) {
+  const ws = byWallet(a.events).sort((x, y) => x.first - y.first);
+  const first = Math.min(...ws.map((w) => w.first));
+  const latest = Math.max(...ws.map((w) => w.first));
+  const lastFill = Math.max(...ws.map((w) => w.last));
+  const until = (a, b) => (new Date(a).toDateString() === new Date(b).toDateString()
+    ? new Date(b).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : when(b));
+  const line = (w) => {
+    const t = w.last - w.first > 5 * 60e3
+      ? `${when(w.first)} to ${until(w.first, w.last)} <span class="muted">(${w.n > 1 ? `${w.n} entries, ` : 'filled over '}${span(w.last - w.first)})</span>`
+      : when(w.first);
+    return `<div class="aw"><a href="#" data-w="${w.address}" class="mono">${short(w.address)}</a><span>${usd(w.notional)} @ ${f2(w.notional / w.qty, 4)}</span><span title="${ago(w.first)}">${t}</span></div>`;
+  };
+  return `
+    <div class="card alert"><div style="display:flex;justify-content:space-between"><b>${coinName(a.coin)} ${sideChip(a.side)}</b><span class="muted" title="most recent fill: ${new Date(lastFill).toLocaleString()}">last added ${ago(lastFill)}</span></div>
+    <div>${a.entities} independent finalists opened ${usd(a.notional)} total</div>
+    <div class="muted" style="font-size:12px;margin:2px 0 6px">Wallets got in ${span(latest - first)} apart: first ${when(first)}, last to join ${when(latest)}</div>
+    <div class="awl">${ws.map(line).join('')}</div></div>`;
 }
 
 // ---------- Signals ----------
@@ -155,10 +179,7 @@ async function renderSignals() {
     <p class="sub">Every asset at least one finalist holds. <b>Bias</b> is skill-weighted agreement among holders. <b>Breadth</b> is the share of all finalist skill-weight in the asset. <b>Size</b> is the median position as a multiple of the holder's equity. <b>Signal</b> combines agreement, breadth, freshness and size, and needs at least 2 independent holders on one side. Click a row for the holders.</p>
     <div id="cons" class="card"></div>
     <div id="holders"></div>`;
-  $('#alerts').innerHTML = c.alerts.length ? c.alerts.map((a) => `
-    <div class="card alert"><div style="display:flex;justify-content:space-between"><b>${coinName(a.coin)} ${sideChip(a.side)}</b><span class="muted">${ago(a.last)}</span></div>
-    <div>${a.entities} independent finalists opened ${usd(a.notional)} total</div>
-    <div class="muted" style="font-size:12px">${byWallet(a.events).map((w) => `<a href="#" data-w="${w.address}" class="mono">${short(w.address)}</a> ${usd(w.notional)} @ ${f2(w.notional / w.qty, 4)}`).join(' · ')}</div></div>`).join('')
+  $('#alerts').innerHTML = c.alerts.length ? c.alerts.map(alertCard).join('')
     : '<div class="empty">No clustered entries in the current window.</div>';
   $('#alerts').querySelectorAll('[data-w]').forEach((el) => el.onclick = (e) => { e.preventDefault(); openWallet(el.dataset.w); });
   table($('#cons'), c.rows, [

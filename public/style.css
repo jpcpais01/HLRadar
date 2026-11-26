@@ -66,3 +66,6 @@ svg text { fill: var(--muted); font-size: 11px; }
 .alert { border-left: 3px solid var(--warn); }
 @media (max-width: 700px) { main { padding: 12px 16px 40px; } .funnel .row { grid-template-columns: 140px 1fr 50px; } .cols-2 { grid-template-columns: 1fr; } }
 .card > .empty { border: 0; padding: 18px; }
+.awl { font-size: 12px; display: grid; gap: 2px; }
+.aw { display: grid; grid-template-columns: 9em 11em 1fr; gap: 8px; align-items: baseline; }
+.aw > span:first-of-type { font-variant-numeric: tabular-nums; }
